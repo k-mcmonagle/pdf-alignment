@@ -1,0 +1,1488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Infinite PDF Canvas Pro</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://unpkg.com/konva@9.2.3/konva.min.js"></script>
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #3498db;
+            --secondary: #2c3e50;
+            --accent: #e74c3c;
+            --light: #f8f9fa;
+            --border: #ddd;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #e0e0e0;
+            display: flex;
+            height: 100vh;
+        }
+
+        /* --- Toolbar (Left) --- */
+        #toolbar {
+            width: 50px;
+            background-color: var(--secondary);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding-top: 10px;
+            z-index: 20;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.2);
+        }
+
+        .tool-btn {
+            width: 36px;
+            height: 36px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            border: none;
+            background: transparent;
+            color: #bdc3c7;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 1.2em;
+            transition: all 0.2s;
+        }
+
+        .tool-btn:hover {
+            background: rgba(255,255,255,0.1);
+            color: white;
+        }
+
+        .tool-btn.active {
+            background: var(--primary);
+            color: white;
+            box-shadow: 0 0 10px rgba(52, 152, 219, 0.5);
+        }
+
+        /* --- Sidebar (Left Panel) --- */
+        #sidebar {
+            width: 280px;
+            min-width: 280px;
+            background-color: #ffffff;
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            z-index: 10;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+            overflow: hidden;
+            white-space: nowrap; /* Prevent text wrapping during transition */
+        }
+
+        #sidebar.collapsed {
+            width: 0;
+            min-width: 0;
+            border-right: none;
+        }
+
+        #sidebar-toggle-btn {
+            position: absolute;
+            top: 10px;
+            left: 340px; /* 50 + 280 + 10 */
+            width: 30px;
+            height: 30px;
+            background-color: var(--secondary);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            transition: left 0.3s ease;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
+        }
+
+        #sidebar.collapsed + #sidebar-toggle-btn {
+            left: 60px; /* 50 + 10 */
+        }
+
+        #sidebar-header {
+            padding: 15px;
+            background-color: var(--secondary);
+            color: white;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            min-height: 20px;
+        }
+
+        #file-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+        }
+
+        .file-item {
+            background: var(--light);
+            border: 1px solid var(--border);
+            padding: 8px;
+            margin-bottom: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+            display: flex;
+            align-items: center;
+            transition: background 0.2s;
+            user-select: none;
+            position: relative;
+        }
+
+        .file-item:hover {
+            background: #e9ecef;
+        }
+
+        .file-item.selected {
+            border-left: 4px solid var(--primary);
+            background: #e3f2fd;
+        }
+
+        .file-icon {
+            margin-right: 8px;
+            color: var(--accent);
+        }
+
+        #controls {
+            padding: 15px;
+            border-top: 1px solid var(--border);
+            background: var(--light);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        /* --- Canvas Area --- */
+        #canvas-wrapper {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #canvas-container {
+            flex: 1;
+            background-color: #e0e0e0;
+            /* Grid pattern background */
+            background-image: 
+                linear-gradient(#ccc 1px, transparent 1px),
+                linear-gradient(90deg, #ccc 1px, transparent 1px);
+            background-size: 50px 50px;
+            background-position: 0 0;
+        }
+
+        /* --- Right Sidebar (Annotations) --- */
+        #right-sidebar {
+            width: 300px;
+            min-width: 300px;
+            background-color: #ffffff;
+            border-left: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            z-index: 10;
+            box-shadow: -2px 0 5px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+            overflow: hidden;
+        }
+
+        #right-sidebar.collapsed {
+            width: 0;
+            min-width: 0;
+            border-left: none;
+        }
+
+        #right-sidebar-header {
+            padding: 15px;
+            background-color: var(--secondary);
+            color: white;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            min-height: 20px;
+        }
+
+        #annotation-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+            background: #f8f9fa;
+        }
+
+        .annotation-item {
+            background: white;
+            border: 1px solid var(--border);
+            padding: 10px;
+            margin-bottom: 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .annotation-item:hover {
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+
+        .annotation-item.selected {
+            border-left: 4px solid var(--primary);
+            background: #e3f2fd;
+        }
+
+        .annotation-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+            font-size: 0.9em;
+            color: #555;
+            font-weight: 600;
+        }
+
+        .annotation-type-icon {
+            margin-right: 5px;
+            color: var(--primary);
+        }
+
+        .annotation-note-input {
+            width: 100%;
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            font-family: inherit;
+            font-size: 0.9em;
+            resize: vertical;
+            min-height: 40px;
+            box-sizing: border-box;
+        }
+
+        .annotation-actions {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 5px;
+            gap: 5px;
+        }
+
+        .btn-xs {
+            padding: 2px 6px;
+            font-size: 0.75em;
+        }
+
+        #right-sidebar-toggle-btn {
+            position: absolute;
+            top: 10px;
+            right: 320px; /* 20 (scroll) + 300 (sidebar) */
+            width: 30px;
+            height: 30px;
+            background-color: var(--secondary);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            transition: right 0.3s ease;
+            box-shadow: -2px 2px 5px rgba(0,0,0,0.2);
+        }
+
+        #right-sidebar.collapsed + #right-sidebar-toggle-btn {
+            right: 20px;
+        }
+
+        /* --- UI Elements --- */
+        .btn-group { display: flex; gap: 5px; }
+        .btn-group button { flex: 1; }
+
+        button {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.2s;
+            font-size: 0.85em;
+        }
+
+        .btn-primary { background-color: var(--primary); color: white; }
+        .btn-primary:hover { background-color: #2980b9; }
+        .btn-secondary { background-color: #95a5a6; color: white; }
+        .btn-secondary:hover { background-color: #7f8c8d; }
+        .btn-danger { background-color: var(--accent); color: white; }
+        .btn-danger:hover { background-color: #c0392b; }
+        .btn-action { background-color: #2ecc71; color: white; }
+        .btn-action:hover { background-color: #27ae60; }
+
+        select {
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid var(--border);
+            width: 100%;
+        }
+
+        /* --- Overlays --- */
+        #loading-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            z-index: 1000;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid var(--primary);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 15px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .konva-textarea {
+            position: absolute;
+            border: none;
+            padding: 0;
+            margin: 0;
+            overflow: hidden;
+            background: none;
+            outline: none;
+            resize: none;
+            line-height: 1.2;
+            font-family: sans-serif;
+            transform-origin: left top;
+        }
+
+        /* Zoom Controls Overlay */
+        #zoom-controls {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: white;
+            padding: 5px;
+            border-radius: 4px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            gap: 5px;
+        }
+        #zoom-controls button {
+            width: 30px;
+            height: 30px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f8f9fa;
+            color: #333;
+        }
+        #zoom-controls button:hover { background: #e9ecef; }
+
+    </style>
+</head>
+<body>
+
+    <!-- Loading -->
+    <div id="loading-overlay">
+        <div class="spinner"></div>
+        <div id="loading-text">Processing...</div>
+    </div>
+
+    <!-- Toolbar -->
+    <div id="toolbar">
+        <button class="tool-btn active" id="tool-select" title="Select & Move (V)" onclick="setTool('select')">
+            <i class="fas fa-mouse-pointer"></i>
+        </button>
+        <button class="tool-btn" id="tool-hand" title="Pan Tool (H)" onclick="setTool('hand')">
+            <i class="fas fa-hand-paper"></i>
+        </button>
+        <div style="height: 1px; width: 30px; background: rgba(255,255,255,0.2); margin: 5px 0;"></div>
+        <button class="tool-btn" id="tool-pen" title="Free Draw (P)" onclick="setTool('pen')">
+            <i class="fas fa-pen"></i>
+        </button>
+        <button class="tool-btn" id="tool-rect" title="Rectangle (R)" onclick="setTool('rect')">
+            <i class="far fa-square"></i>
+        </button>
+        <button class="tool-btn" id="tool-circle" title="Circle (C)" onclick="setTool('circle')">
+            <i class="far fa-circle"></i>
+        </button>
+        <button class="tool-btn" id="tool-arrow" title="Arrow (A)" onclick="setTool('arrow')">
+            <i class="fas fa-long-arrow-alt-right"></i>
+        </button>
+        <button class="tool-btn" id="tool-text" title="Text Note (T)" onclick="setTool('text')">
+            <i class="fas fa-sticky-note"></i>
+        </button>
+    </div>
+
+    <!-- Sidebar -->
+    <div id="sidebar">
+        <div id="sidebar-header">
+            <span>PDF Arranger</span>
+        </div>
+        
+        <div id="file-list">
+            <div style="padding: 10px; color: #666; font-style: italic; text-align: center;">
+                No files loaded.
+            </div>
+        </div>
+
+        <div id="controls">
+            <input type="file" id="file-input" multiple accept="application/pdf" style="display: none;">
+            <input type="file" id="load-project-input" accept=".json" style="display: none;">
+            
+            <button class="btn-primary" onclick="document.getElementById('file-input').click()">
+                <i class="fas fa-plus"></i> Add PDFs
+            </button>
+            
+            <div class="btn-group">
+                <button class="btn-danger" onclick="deleteSelectedSidebar()">
+                    <i class="fas fa-trash"></i> Del
+                </button>
+                <button class="btn-secondary" id="btn-lock" onclick="lockSelected()">
+                    <i class="fas fa-lock"></i> Lock
+                </button>
+            </div>
+
+            <label style="font-size: 0.8em; font-weight: bold; margin-top: 5px;">Arrange:</label>
+            <div class="btn-group">
+                <select id="arrange-mode">
+                    <option value="horizontal">Horizontal</option>
+                    <option value="vertical">Vertical</option>
+                    <option value="grid">Grid</option>
+                </select>
+                <button class="btn-action" onclick="arrangePDFs()">Go</button>
+            </div>
+            
+            <div style="height: 1px; background: #ddd; margin: 5px 0;"></div>
+
+            <div class="btn-group">
+                <button class="btn-secondary" onclick="saveProject()">Save</button>
+                <button class="btn-secondary" onclick="document.getElementById('load-project-input').click()">Load</button>
+            </div>
+            <button class="btn-secondary" onclick="exportImage()">Export Image</button>
+        </div>
+    </div>
+
+    <button id="sidebar-toggle-btn" onclick="toggleSidebar()">
+        <i class="fas fa-bars"></i>
+    </button>
+
+    <!-- Canvas -->
+    <div id="canvas-wrapper">
+        <div id="canvas-container"></div>
+        
+        <div id="zoom-controls">
+            <button onclick="adjustZoom(1.2)"><i class="fas fa-plus"></i></button>
+            <button onclick="resetView()"><i class="fas fa-compress-arrows-alt"></i></button>
+            <button onclick="adjustZoom(0.8)"><i class="fas fa-minus"></i></button>
+        </div>
+    </div>
+
+    <!-- Right Sidebar (Annotations) -->
+    <div id="right-sidebar">
+        <div id="right-sidebar-header">
+            <span>Annotations</span>
+        </div>
+        <div id="annotation-list">
+            <!-- Items will be injected here -->
+            <div style="text-align: center; color: #999; margin-top: 20px;">
+                No annotations yet.
+            </div>
+        </div>
+    </div>
+
+    <button id="right-sidebar-toggle-btn" onclick="toggleRightSidebar()">
+        <i class="fas fa-list"></i>
+    </button>
+
+    <script>
+        // --- Configuration ---
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        
+        // --- State ---
+        let pdfDocs = []; 
+        let stage, layer, transformer;
+        let currentTool = 'select';
+        let isDrawing = false;
+        let currentShape = null;
+        let selectedFileIds = new Set(); // For sidebar selection
+
+        // --- Initialization ---
+        function init() {
+            const container = document.getElementById('canvas-container');
+            
+            stage = new Konva.Stage({
+                container: 'canvas-container',
+                width: container.offsetWidth,
+                height: container.offsetHeight,
+                draggable: false // Managed by tools
+            });
+
+            layer = new Konva.Layer();
+            stage.add(layer);
+
+            transformer = new Konva.Transformer({
+                centeredScaling: true,
+                rotationSnaps: [0, 90, 180, 270],
+            });
+            layer.add(transformer);
+
+            // Responsive
+            window.addEventListener('resize', () => {
+                stage.width(container.offsetWidth);
+                stage.height(container.offsetHeight);
+            });
+
+            setupStageEvents();
+            setupKeyboardShortcuts();
+        }
+
+        // --- Tool Management ---
+        function setTool(toolName) {
+            currentTool = toolName;
+            
+            // Update UI
+            document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`tool-${toolName}`).classList.add('active');
+
+            // Update Cursor & Behavior
+            const container = stage.container();
+            
+            if (toolName === 'hand') {
+                container.style.cursor = 'grab';
+                stage.draggable(true);
+                transformer.nodes([]); // Deselect
+            } else {
+                container.style.cursor = 'default';
+                stage.draggable(false);
+            }
+
+            if (toolName !== 'select') {
+                transformer.nodes([]); // Deselect when switching to drawing
+            }
+        }
+
+        function updateGrid() {
+            const scale = stage.scaleX();
+            const x = stage.x();
+            const y = stage.y();
+            
+            const container = document.getElementById('canvas-container');
+            container.style.backgroundPosition = `${x}px ${y}px`;
+            container.style.backgroundSize = `${50 * scale}px ${50 * scale}px`;
+        }
+
+        // --- Stage Events (The Core Logic) ---
+        function setupStageEvents() {
+            // 1. Zoom (Scroll Wheel)
+            stage.on('wheel', (e) => {
+                e.evt.preventDefault();
+                const scaleBy = 1.1;
+                const oldScale = stage.scaleX();
+                const pointer = stage.getPointerPosition();
+
+                const mousePointTo = {
+                    x: (pointer.x - stage.x()) / oldScale,
+                    y: (pointer.y - stage.y()) / oldScale,
+                };
+
+                const direction = e.evt.deltaY > 0 ? -1 : 1;
+                const newScale = direction > 0 ? oldScale * scaleBy : oldScale / scaleBy;
+
+                stage.scale({ x: newScale, y: newScale });
+
+                const newPos = {
+                    x: pointer.x - mousePointTo.x * newScale,
+                    y: pointer.y - mousePointTo.y * newScale,
+                };
+                stage.position(newPos);
+                updateGrid();
+            });
+            
+            stage.on('dragmove', updateGrid);
+
+            // 2. Mouse Down (Tool Logic)
+            stage.on('mousedown touchstart', (e) => {
+                // Hand Tool: handled by stage.draggable(true) mostly, but we want cursor update
+                if (currentTool === 'hand') {
+                    stage.container().style.cursor = 'grabbing';
+                    // Prevent selecting items while panning
+                    e.evt.preventDefault(); 
+                    return;
+                }
+
+                // Select Tool
+                if (currentTool === 'select') {
+                    if (e.target === stage) {
+                        transformer.nodes([]);
+                        updateLockUI();
+                        return;
+                    }
+                    
+                    // Check if clicked on something selectable
+                    // Traverse up to find group or shape
+                    let target = e.target;
+                    // If text inside group, get group
+                    if (target.getParent().hasName('selectable')) target = target.getParent();
+                    
+                    if (target.hasName('selectable')) {
+                        // Check if locked
+                        if (target.getAttr('locked')) {
+                            // Allow selection but disable transformer resize?
+                            transformer.nodes([target]);
+                            transformer.resizeEnabled(false);
+                            transformer.rotateEnabled(false);
+                            updateLockUI();
+                            return;
+                        } else {
+                            transformer.resizeEnabled(true);
+                            transformer.rotateEnabled(true);
+                        }
+
+                        const metaPressed = e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey;
+                        const isSelected = transformer.nodes().indexOf(target) >= 0;
+
+                        if (!metaPressed && !isSelected) {
+                            transformer.nodes([target]);
+                        } else if (metaPressed && isSelected) {
+                            const nodes = transformer.nodes().slice();
+                            nodes.splice(nodes.indexOf(target), 1);
+                            transformer.nodes(nodes);
+                        } else if (metaPressed && !isSelected) {
+                            const nodes = transformer.nodes().concat([target]);
+                            transformer.nodes(nodes);
+                        }
+                        updateLockUI();
+                        updateAnnotationList();
+                    }
+                    return;
+                }
+
+                // Drawing Tools
+                isDrawing = true;
+                const pos = stage.getRelativePointerPosition();
+                const shapeId = 'shape-' + Date.now();
+                
+                if (currentTool === 'pen') {
+                    currentShape = new Konva.Line({
+                        stroke: '#df4b26',
+                        strokeWidth: 5,
+                        globalCompositeOperation: 'source-over',
+                        points: [pos.x, pos.y],
+                        draggable: false, // Default locked
+                        name: 'selectable drawing',
+                        id: shapeId,
+                        tension: 0.5,
+                        lineCap: 'round',
+                        lineJoin: 'round'
+                    });
+                    currentShape.setAttr('locked', true);
+                    layer.add(currentShape);
+                } else if (currentTool === 'rect') {
+                    currentShape = new Konva.Rect({
+                        x: pos.x, y: pos.y, width: 0, height: 0,
+                        stroke: 'red', strokeWidth: 2,
+                        draggable: false, name: 'selectable shape',
+                        id: shapeId
+                    });
+                    currentShape.setAttr('locked', true);
+                    layer.add(currentShape);
+                } else if (currentTool === 'circle') {
+                    currentShape = new Konva.Circle({
+                        x: pos.x, y: pos.y, radius: 0,
+                        stroke: 'red', strokeWidth: 2,
+                        draggable: false, name: 'selectable shape',
+                        id: shapeId
+                    });
+                    currentShape.setAttr('locked', true);
+                    layer.add(currentShape);
+                } else if (currentTool === 'arrow') {
+                    currentShape = new Konva.Arrow({
+                        points: [pos.x, pos.y, pos.x, pos.y],
+                        pointerLength: 10, pointerWidth: 10,
+                        fill: 'red', stroke: 'red', strokeWidth: 4,
+                        draggable: false, name: 'selectable shape',
+                        id: shapeId
+                    });
+                    currentShape.setAttr('locked', true);
+                    layer.add(currentShape);
+                } else if (currentTool === 'text') {
+                    // Only create note if clicking on empty space
+                    if (e.target === stage) {
+                        createNote(pos.x, pos.y);
+                        isDrawing = false; // Immediate action
+                        setTool('select'); // Switch back to select to allow editing
+                    }
+                }
+            });
+
+            // 3. Mouse Move
+            stage.on('mousemove touchmove', (e) => {
+                if (currentTool === 'hand') return;
+                if (!isDrawing) return;
+
+                const pos = stage.getRelativePointerPosition();
+
+                if (currentTool === 'pen') {
+                    const newPoints = currentShape.points().concat([pos.x, pos.y]);
+                    currentShape.points(newPoints);
+                } else if (currentTool === 'rect') {
+                    currentShape.width(pos.x - currentShape.x());
+                    currentShape.height(pos.y - currentShape.y());
+                } else if (currentTool === 'circle') {
+                    const dx = pos.x - currentShape.x();
+                    const dy = pos.y - currentShape.y();
+                    const radius = Math.sqrt(dx*dx + dy*dy);
+                    currentShape.radius(radius);
+                } else if (currentTool === 'arrow') {
+                    const points = currentShape.points();
+                    points[2] = pos.x;
+                    points[3] = pos.y;
+                    currentShape.points(points);
+                }
+            });
+
+            // 4. Mouse Up
+            stage.on('mouseup touchend', () => {
+                if (currentTool === 'hand') {
+                    stage.container().style.cursor = 'grab';
+                }
+                if (isDrawing) {
+                    isDrawing = false;
+                    // If shape is too small, remove it (accidental click)
+                    if (currentShape && currentTool !== 'pen' && currentTool !== 'text') {
+                        if (currentShape.width && Math.abs(currentShape.width()) < 5) currentShape.destroy();
+                        else if (currentShape.radius && currentShape.radius() < 5) currentShape.destroy();
+                    }
+                    // Make created shape draggable
+                    if (currentShape) {
+                        currentShape.draggable(false);
+                        currentShape.setAttr('locked', true);
+                        
+                        // Select it
+                        setTool('select');
+                        transformer.nodes([currentShape]);
+                        transformer.resizeEnabled(false);
+                        transformer.rotateEnabled(false);
+                        updateAnnotationList();
+                    }
+                }
+            });
+        }
+
+        // --- File Handling ---
+        document.getElementById('file-input').addEventListener('change', async (e) => {
+            const files = Array.from(e.target.files);
+            if (files.length === 0) return;
+            showLoading(true);
+            try {
+                for (const file of files) {
+                    await processPDF(file);
+                }
+                updateSidebar();
+                if (layer.children.length <= files.length + 5) { 
+                    arrangePDFs();
+                }
+            } catch (err) {
+                console.error(err);
+                alert("Error: " + err.message);
+            } finally {
+                showLoading(false);
+                e.target.value = ''; 
+            }
+        });
+
+        async function processPDF(file) {
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            const fileId = Date.now() + Math.random().toString(36).substr(2, 9);
+            
+            const docInfo = {
+                id: fileId,
+                name: file.name,
+                pageCount: pdf.numPages,
+                pages: []
+            };
+
+            for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+                const page = await pdf.getPage(pageNum);
+                const viewport = page.getViewport({ scale: 1.5 });
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+
+                await page.render({ canvasContext: context, viewport: viewport }).promise;
+
+                const img = new Image();
+                img.src = canvas.toDataURL();
+                await new Promise(r => img.onload = r);
+
+                const konvaImage = new Konva.Image({
+                    image: img,
+                    x: 0, y: 0,
+                    width: viewport.width / 1.5,
+                    height: viewport.height / 1.5,
+                    draggable: false,
+                    name: 'selectable pdf-page',
+                    id: `page-${fileId}-${pageNum}`,
+                    shadowColor: 'black',
+                    shadowBlur: 10,
+                    shadowOpacity: 0.3,
+                    shadowOffset: {x: 5, y: 5}
+                });
+
+                konvaImage.setAttr('fileId', fileId);
+                konvaImage.setAttr('fileName', file.name);
+                konvaImage.setAttr('pageNumber', pageNum);
+                konvaImage.setAttr('locked', true);
+
+                layer.add(konvaImage);
+                docInfo.pages.push(konvaImage);
+            }
+            pdfDocs.push(docInfo);
+        }
+
+        // --- Sidebar Logic ---
+        function updateSidebar() {
+            const list = document.getElementById('file-list');
+            list.innerHTML = '';
+            
+            if (pdfDocs.length === 0) {
+                list.innerHTML = '<div style="padding: 10px; color: #666; font-style: italic; text-align: center;">No files loaded.</div>';
+                return;
+            }
+
+            pdfDocs.forEach((doc, index) => {
+                const item = document.createElement('div');
+                item.className = 'file-item';
+                if (selectedFileIds.has(doc.id)) item.classList.add('selected');
+                
+                item.innerHTML = `<span class="file-icon">📄</span> <span>${doc.name} (${doc.pageCount})</span>`;
+                
+                // Click Handler
+                item.onclick = (e) => {
+                    if (e.ctrlKey || e.metaKey) {
+                        // Toggle selection
+                        if (selectedFileIds.has(doc.id)) selectedFileIds.delete(doc.id);
+                        else selectedFileIds.add(doc.id);
+                        updateSidebar(); // Re-render to show selection
+                    } else {
+                        // Single select and focus
+                        selectedFileIds.clear();
+                        selectedFileIds.add(doc.id);
+                        updateSidebar();
+                        focusOnDoc(doc);
+                    }
+                };
+
+                list.appendChild(item);
+            });
+        }
+
+        function deleteSelectedSidebar() {
+            if (selectedFileIds.size === 0) return;
+            if (!confirm(`Delete ${selectedFileIds.size} file(s)?`)) return;
+
+            // Remove nodes from canvas
+            const idsToRemove = Array.from(selectedFileIds);
+            const nodesToRemove = layer.find('.pdf-page').filter(n => idsToRemove.includes(n.getAttr('fileId')));
+            nodesToRemove.forEach(n => n.destroy());
+            
+            // Remove from pdfDocs
+            pdfDocs = pdfDocs.filter(d => !selectedFileIds.has(d.id));
+            
+            selectedFileIds.clear();
+            updateSidebar();
+            transformer.nodes([]);
+        }
+
+        function focusOnDoc(doc) {
+            // Find first page node
+            const nodes = layer.find('.pdf-page').filter(n => n.getAttr('fileId') === doc.id);
+            if (nodes.length === 0) return;
+            
+            const targetNode = nodes[0];
+            
+            // Calculate Zoom to Fit
+            const padding = 50;
+            const containerW = stage.width();
+            const containerH = stage.height();
+            
+            // Determine bounding box of the doc (if multiple pages, maybe fit all? For now just first page)
+            // Let's fit the first page
+            const nodeW = targetNode.width() * targetNode.scaleX();
+            const nodeH = targetNode.height() * targetNode.scaleY();
+            
+            const scaleX = (containerW - padding * 2) / nodeW;
+            const scaleY = (containerH - padding * 2) / nodeH;
+            
+            // Use the smaller scale to ensure it fits, but cap it at 1.5 (don't zoom in crazy close on small things)
+            let newScale = Math.min(scaleX, scaleY);
+            if (newScale > 2) newScale = 2; 
+
+            // Center logic
+            // We want the center of the node to be at the center of the screen
+            const nodeCenter = {
+                x: targetNode.x() + (nodeW / 2),
+                y: targetNode.y() + (nodeH / 2)
+            };
+            
+            // Formula: stagePos = screenCenter - (worldPoint * scale)
+            const newX = (containerW / 2) - (nodeCenter.x * newScale); // Wait, nodeCenter is in world coords? 
+            // No, node.x() is relative to parent (layer), which is moved by stage? No layer is usually 0,0.
+            // Stage transform applies to everything.
+            // So node.x() is "world coordinate".
+            
+            // Correct formula:
+            // stageX = centerScreenX - nodeWorldX * newScale
+            // But nodeWorldX is just node.x() if layer isn't moved.
+            
+            // Wait, if we scaled the node itself (node.scaleX), its width is node.width() * node.scaleX().
+            // Its center in world space is node.x() + width/2.
+            
+            const finalX = (containerW / 2) - (targetNode.x() + targetNode.width()/2) * newScale;
+            const finalY = (containerH / 2) - (targetNode.y() + targetNode.height()/2) * newScale;
+
+            stage.to({
+                x: finalX,
+                y: finalY,
+                scaleX: newScale,
+                scaleY: newScale,
+                duration: 0.8,
+                easing: Konva.Easings.EaseInOut
+            });
+        }
+
+        // --- Arrangement ---
+        function arrangePDFs() {
+            const mode = document.getElementById('arrange-mode').value;
+            const gap = 50;
+            let currentX = 50;
+            let currentY = 50;
+            const startX = 50;
+            
+            // Get all PDF nodes, grouped by file
+            // We iterate pdfDocs to keep file order
+            
+            if (mode === 'horizontal') {
+                pdfDocs.forEach(doc => {
+                    const nodes = layer.find('.pdf-page').filter(n => n.getAttr('fileId') === doc.id);
+                    nodes.forEach(node => {
+                        node.to({ x: currentX, y: 50, duration: 0.5 });
+                        currentX += (node.width() * node.scaleX()) + gap;
+                    });
+                    if(nodes.length > 0) currentX += gap; // Extra gap between docs
+                });
+            } else if (mode === 'vertical') {
+                pdfDocs.forEach(doc => {
+                    const nodes = layer.find('.pdf-page').filter(n => n.getAttr('fileId') === doc.id);
+                    nodes.forEach(node => {
+                        node.to({ x: 50, y: currentY, duration: 0.5 });
+                        currentY += (node.height() * node.scaleY()) + gap;
+                    });
+                    if(nodes.length > 0) currentY += gap;
+                });
+            } else if (mode === 'grid') {
+                // Simple grid based on count
+                const nodes = layer.find('.pdf-page');
+                const cols = Math.ceil(Math.sqrt(nodes.length));
+                let col = 0;
+                let row = 0;
+                let maxHeightInRow = 0;
+                
+                // This is a naive grid that doesn't account for varying sizes well, but it's a start
+                // Better: Grid of Docs
+                
+                currentX = 50;
+                currentY = 50;
+                
+                pdfDocs.forEach(doc => {
+                    const docNodes = layer.find('.pdf-page').filter(n => n.getAttr('fileId') === doc.id);
+                    // Treat doc as a block? Or just flow all pages?
+                    // Let's flow all pages
+                    docNodes.forEach(node => {
+                        node.to({ x: currentX, y: currentY, duration: 0.5 });
+                        
+                        const w = node.width() * node.scaleX();
+                        const h = node.height() * node.scaleY();
+                        
+                        currentX += w + gap;
+                        maxHeightInRow = Math.max(maxHeightInRow, h);
+                        
+                        col++;
+                        if (col >= cols) {
+                            col = 0;
+                            currentX = startX;
+                            currentY += maxHeightInRow + gap;
+                            maxHeightInRow = 0;
+                        }
+                    });
+                });
+            }
+        }
+
+        // --- Locking ---
+        function lockSelected() {
+            const nodes = transformer.nodes();
+            if (nodes.length === 0) return;
+            
+            let anyLocked = false;
+            nodes.forEach(node => {
+                if (node.getAttr('locked')) anyLocked = true;
+            });
+            
+            // Toggle: if any are locked, unlock all. Else lock all.
+            const shouldLock = !anyLocked;
+            
+            nodes.forEach(node => {
+                node.setAttr('locked', shouldLock);
+                node.draggable(!shouldLock);
+            });
+            
+            // Update UI feedback
+            updateLockBtnState(shouldLock);
+            
+            // Refresh transformer
+            if (shouldLock) {
+                transformer.resizeEnabled(false);
+                transformer.rotateEnabled(false);
+            } else {
+                transformer.resizeEnabled(true);
+                transformer.rotateEnabled(true);
+            }
+        }
+        
+        function updateLockBtnState(isLocked) {
+            const btn = document.getElementById('btn-lock');
+            if (isLocked) {
+                btn.style.backgroundColor = '#e74c3c'; // Red for locked
+                btn.innerHTML = '<i class="fas fa-lock"></i> Unlock';
+            } else {
+                btn.style.backgroundColor = '#95a5a6'; // Grey for unlock
+                btn.innerHTML = '<i class="fas fa-lock-open"></i> Lock';
+            }
+        }
+        
+        function updateLockUI() {
+            const nodes = transformer.nodes();
+            if (nodes.length === 0) {
+                updateLockBtnState(false);
+                return;
+            }
+            let anyLocked = false;
+            nodes.forEach(node => {
+                if (node.getAttr('locked')) anyLocked = true;
+            });
+            updateLockBtnState(anyLocked);
+        }
+
+        // --- Notes / Text ---
+        function createNote(x, y) {
+            const group = new Konva.Group({
+                x: x, y: y,
+                draggable: true,
+                name: 'selectable comment',
+                id: 'note-' + Date.now()
+            });
+
+            const rect = new Konva.Rect({
+                width: 200, height: 150,
+                fill: '#fff740',
+                stroke: '#ccc',
+                shadowColor: 'black', shadowBlur: 5, shadowOpacity: 0.2
+            });
+
+            const text = new Konva.Text({
+                text: 'Double click to edit...',
+                fontSize: 16, fontFamily: 'Calibri', fill: '#000',
+                width: 180, padding: 10
+            });
+
+            group.add(rect);
+            group.add(text);
+            layer.add(group);
+            
+            updateAnnotationList();
+            
+            // Edit logic
+            text.on('dblclick dbltap', () => {
+                text.hide();
+                layer.draw();
+
+                const textPosition = text.getAbsolutePosition();
+                const areaPosition = {
+                    x: stage.container().getBoundingClientRect().left + textPosition.x,
+                    y: stage.container().getBoundingClientRect().top + textPosition.y,
+                };
+
+                const textarea = document.createElement('textarea');
+                document.body.appendChild(textarea);
+                textarea.value = text.text();
+                textarea.className = 'konva-textarea';
+                textarea.style.top = areaPosition.y + 'px';
+                textarea.style.left = areaPosition.x + 'px';
+                textarea.style.width = text.width() + 'px';
+                textarea.style.height = text.height() + 'px';
+                textarea.focus();
+
+                textarea.addEventListener('blur', function() {
+                    text.text(textarea.value);
+                    document.body.removeChild(textarea);
+                    text.show();
+                    layer.draw();
+                    updateAnnotationList();
+                });
+            });
+        }
+
+        // --- Annotations / Right Sidebar ---
+        function toggleRightSidebar() {
+            const sidebar = document.getElementById('right-sidebar');
+            sidebar.classList.toggle('collapsed');
+            
+            // Resize stage after transition
+            setTimeout(() => {
+                const container = document.getElementById('canvas-container');
+                stage.width(container.offsetWidth);
+                stage.height(container.offsetHeight);
+                stage.draw();
+            }, 310);
+        }
+
+        function updateAnnotationList() {
+            const list = document.getElementById('annotation-list');
+            // Find all selectable shapes that are NOT pdf pages
+            // We look for nodes with name 'selectable ...' but filter out 'pdf-page'
+            const nodes = layer.find('.selectable').filter(node => !node.hasName('pdf-page'));
+            
+            if (nodes.length === 0) {
+                list.innerHTML = '<div style="text-align: center; color: #999; margin-top: 20px;">No annotations yet.</div>';
+                return;
+            }
+
+            list.innerHTML = '';
+            
+            nodes.forEach(node => {
+                const item = document.createElement('div');
+                item.className = 'annotation-item';
+                
+                // Check if selected
+                const isSelected = transformer.nodes().indexOf(node) >= 0;
+                if (isSelected) item.classList.add('selected');
+                
+                // Determine type and icon
+                let type = 'Shape';
+                let icon = 'fa-shapes';
+                if (node.getClassName() === 'Line') { type = 'Drawing'; icon = 'fa-pen'; }
+                if (node.getClassName() === 'Arrow') { type = 'Arrow'; icon = 'fa-long-arrow-alt-right'; }
+                if (node.getClassName() === 'Group' && node.hasName('comment')) { type = 'Note'; icon = 'fa-sticky-note'; }
+                
+                // Get content/note
+                let noteContent = node.getAttr('userNote') || '';
+                // If it's a text note, the content is the text itself
+                if (type === 'Note') {
+                    const textNode = node.findOne('Text');
+                    if (textNode) noteContent = textNode.text();
+                }
+                
+                const isLocked = node.getAttr('locked');
+                const lockIcon = isLocked ? 'fa-lock' : 'fa-lock-open';
+                const lockTitle = isLocked ? 'Unlock to Edit' : 'Lock';
+                const lockColor = isLocked ? '#e74c3c' : '#95a5a6';
+
+                item.innerHTML = `
+                    <div class="annotation-header" onclick="selectAnnotation('${node.id()}')">
+                        <span><i class="fas ${icon} annotation-type-icon"></i> ${type}</span>
+                        <div class="annotation-actions">
+                            <button class="btn-xs" style="background-color: ${lockColor}; color: white; border:none; border-radius:3px; cursor:pointer;" 
+                                onclick="toggleAnnotationLock('${node.id()}', event)" title="${lockTitle}">
+                                <i class="fas ${lockIcon}"></i>
+                            </button>
+                            <button class="btn-danger btn-xs" onclick="deleteAnnotation('${node.id()}')" title="Delete">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <textarea class="annotation-note-input" placeholder="Add a note..." onblur="updateAnnotationNote('${node.id()}', this.value)">${noteContent}</textarea>
+                `;
+                
+                list.appendChild(item);
+            });
+        }
+
+        function selectAnnotation(id) {
+            const node = layer.findOne('#' + id);
+            if (node) {
+                // Select it
+                transformer.nodes([node]);
+                
+                // If locked, ensure UI reflects it
+                if (node.getAttr('locked')) {
+                    transformer.resizeEnabled(false);
+                    transformer.rotateEnabled(false);
+                } else {
+                    transformer.resizeEnabled(true);
+                    transformer.rotateEnabled(true);
+                }
+                
+                updateLockUI();
+                updateAnnotationList(); // To highlight the item
+                
+                // Center view on it
+                focusOnNode(node); 
+            }
+        }
+
+        function focusOnNode(node) {
+            // Calculate Zoom to Fit
+            const padding = 100;
+            const containerW = stage.width();
+            const containerH = stage.height();
+            
+            // Get node bounding box
+            const box = node.getClientRect(); // This is in absolute coords? No, relative to stage?
+            // getClientRect returns absolute position relative to the container (top-left of canvas)
+            // But we need to calculate the new stage position.
+            
+            // Let's use node properties directly
+            // Node width/height might be 0 for lines/arrows if not calculated right, but getClientRect is better.
+            // However, getClientRect depends on current stage transform.
+            
+            // We want to center the node.
+            // Center of node in local space (relative to parent layer, which is 0,0)
+            // For shapes like Rect, x/y is top-left.
+            // For Line, x/y is 0,0 usually, points are relative.
+            // Let's use getClientRect({ skipTransform: true }) to get unscaled box? No.
+            
+            // Let's reset view first? No, that's jarring.
+            
+            // We need the center of the node in "world" coordinates (layer coordinates).
+            const nodeRect = node.getClientRect({ relativeTo: stage.findOne('Layer') });
+            
+            const nodeCenter = {
+                x: nodeRect.x + nodeRect.width / 2,
+                y: nodeRect.y + nodeRect.height / 2
+            };
+            
+            // We want this point to be at center of screen
+            // And we want to scale such that nodeRect fits with padding
+            
+            const scaleX = (containerW - padding * 2) / nodeRect.width;
+            const scaleY = (containerH - padding * 2) / nodeRect.height;
+            
+            let newScale = Math.min(scaleX, scaleY);
+            // Clamp scale
+            if (newScale > 2) newScale = 2;
+            if (newScale < 0.1) newScale = 0.1;
+            
+            // New stage position
+            // centerScreen = stagePos + nodeCenter * newScale
+            // stagePos = centerScreen - nodeCenter * newScale
+            
+            const finalX = (containerW / 2) - (nodeCenter.x * newScale);
+            const finalY = (containerH / 2) - (nodeCenter.y * newScale);
+
+            stage.to({
+                x: finalX,
+                y: finalY,
+                scaleX: newScale,
+                scaleY: newScale,
+                duration: 0.8,
+                easing: Konva.Easings.EaseInOut,
+                onFinish: updateGrid
+            });
+        }
+
+        function toggleAnnotationLock(id, event) {
+            if(event) event.stopPropagation();
+            const node = layer.findOne('#' + id);
+            if (node) {
+                const isLocked = node.getAttr('locked');
+                node.setAttr('locked', !isLocked);
+                node.draggable(!isLocked);
+                
+                // If currently selected, update transformer
+                if (transformer.nodes().indexOf(node) >= 0) {
+                    if (!isLocked) {
+                        transformer.resizeEnabled(true);
+                        transformer.rotateEnabled(true);
+                    } else {
+                        transformer.resizeEnabled(false);
+                        transformer.rotateEnabled(false);
+                    }
+                    updateLockUI();
+                }
+                updateAnnotationList();
+            }
+        }
+
+        function deleteAnnotation(id) {
+            const node = layer.findOne('#' + id);
+            if (node) {
+                if(confirm('Delete this annotation?')) {
+                    node.destroy();
+                    transformer.nodes([]);
+                    updateAnnotationList();
+                }
+            }
+        }
+
+        function updateAnnotationNote(id, text) {
+            const node = layer.findOne('#' + id);
+            if (node) {
+                // If it's a Note group, update the text inside
+                if (node.getClassName() === 'Group' && node.hasName('comment')) {
+                    const textNode = node.findOne('Text');
+                    if (textNode) {
+                        textNode.text(text);
+                        layer.draw();
+                    }
+                }
+                // Always update the attribute
+                node.setAttr('userNote', text);
+            }
+        }
+
+        // --- Helpers ---
+        function adjustZoom(factor) {
+            const oldScale = stage.scaleX();
+            const newScale = oldScale * factor;
+            
+            // Zoom to center of screen
+            const center = {
+                x: stage.width() / 2,
+                y: stage.height() / 2,
+            };
+
+            const relatedTo = {
+                x: (center.x - stage.x()) / oldScale,
+                y: (center.y - stage.y()) / oldScale,
+            };
+
+            stage.scale({ x: newScale, y: newScale });
+
+            const newPos = {
+                x: center.x - relatedTo.x * newScale,
+                y: center.y - relatedTo.y * newScale,
+            };
+            stage.position(newPos);
+        }
+
+        function resetView() {
+            stage.to({ x: 0, y: 0, scaleX: 1, scaleY: 1, duration: 0.3 });
+        }
+
+        function showLoading(show) {
+            document.getElementById('loading-overlay').style.display = show ? 'flex' : 'none';
+        }
+
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('collapsed');
+            
+            // Wait for transition to finish then resize stage
+            setTimeout(() => {
+                const container = document.getElementById('canvas-container');
+                stage.width(container.offsetWidth);
+                stage.height(container.offsetHeight);
+                stage.draw();
+            }, 310);
+        }
+
+        function setupKeyboardShortcuts() {
+            document.addEventListener('keydown', (e) => {
+                // Tools
+                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+                
+                if (e.key === 'v') setTool('select');
+                if (e.key === 'h') setTool('hand');
+                if (e.key === 'p') setTool('pen');
+                if (e.key === 'r') setTool('rect');
+                if (e.key === 'c') setTool('circle');
+                if (e.key === 't') setTool('text');
+
+                // Delete
+                if (e.key === 'Delete' || e.key === 'Backspace') {
+                    const selected = transformer.nodes();
+                    if (selected.length > 0) {
+                        if(confirm("Delete selected items?")) {
+                            selected.forEach(n => n.destroy());
+                            transformer.nodes([]);
+                            updateAnnotationList();
+                        }
+                    }
+                }
+                
+                // Arrow keys to pan
+                const step = 50;
+                if (e.key === 'ArrowUp') stage.y(stage.y() + step);
+                if (e.key === 'ArrowDown') stage.y(stage.y() - step);
+                if (e.key === 'ArrowLeft') stage.x(stage.x() + step);
+                if (e.key === 'ArrowRight') stage.x(stage.x() - step);
+            });
+        }
+
+        // Save/Load (Simplified for brevity, same logic as before)
+        function saveProject() {
+            const json = stage.toJSON();
+            const projectData = { stage: JSON.parse(json), pdfDocs: pdfDocs };
+            const blob = new Blob([JSON.stringify(projectData)], {type: "application/json"});
+            const link = document.createElement('a');
+            link.download = "pdf-arrange-project.json";
+            link.href = URL.createObjectURL(blob);
+            link.click();
+        }
+        
+        document.getElementById('load-project-input').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    const projectData = JSON.parse(event.target.result);
+                    pdfDocs = projectData.pdfDocs || [];
+                    stage.destroy();
+                    stage = Konva.Node.create(projectData.stage, 'canvas-container');
+                    layer = stage.findOne('Layer');
+                    transformer = stage.findOne('Transformer');
+                    setupStageEvents();
+                    updateSidebar();
+                    alert("Project loaded!");
+                } catch (err) { alert("Error loading: " + err.message); }
+            };
+            reader.readAsText(file);
+        });
+
+        function exportImage() {
+            const dataURL = stage.toDataURL({ pixelRatio: 2 });
+            const link = document.createElement('a');
+            link.download = "canvas-export.png";
+            link.href = dataURL;
+            link.click();
+        }
+
+        // Start
+        init();
+
+    </script>
+</body>
+</html>

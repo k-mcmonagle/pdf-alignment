@@ -1,0 +1,19 @@
+{
+  "name": "ChartDeck",
+  "short_name": "ChartDeck",
+  "description": "Professional PDF alignment chart workspace for side-by-side document review",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "orientation": "landscape",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "utilities"]
+}
