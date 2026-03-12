@@ -2,11 +2,23 @@ import { get, set, del } from 'idb-keyval';
 import type { WorkspaceProject } from '../types';
 
 const AUTOSAVE_KEY = 'chartdeck-autosave';
+const PDF_BUFFERS_KEY = 'chartdeck-pdf-buffers';
 const SETTINGS_KEY = 'chartdeck-settings';
 
 /** Save workspace to IndexedDB (autosave) */
 export async function autosaveWorkspace(project: WorkspaceProject): Promise<void> {
   await set(AUTOSAVE_KEY, project);
+}
+
+/** Save PDF binary buffers to IndexedDB keyed by document id */
+export async function savePdfBuffers(buffers: Record<string, ArrayBuffer>): Promise<void> {
+  await set(PDF_BUFFERS_KEY, buffers);
+}
+
+/** Load saved PDF binary buffers from IndexedDB */
+export async function loadPdfBuffers(): Promise<Record<string, ArrayBuffer> | null> {
+  const data = await get<Record<string, ArrayBuffer>>(PDF_BUFFERS_KEY);
+  return data ?? null;
 }
 
 /** Load autosaved workspace from IndexedDB */
@@ -92,4 +104,182 @@ export function downloadAnnotationsCsv(
   a.download = 'chartdeck-annotations.csv';
   a.click();
   URL.revokeObjectURL(url);
+}
+
+/** Escape XML special characters */
+function escapeXml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/** Export annotations as XLSX (Excel) using SpreadsheetML */
+export function downloadAnnotationsXlsx(
+  annotations: {
+    type: string;
+    note: string;
+    text?: string;
+    realLength?: string;
+    x: number;
+    y: number;
+    createdAt: number;
+  }[],
+) {
+  // Build the sheet XML
+  const headers = ['Type', 'Note / Text', 'Measurement', 'X', 'Y', 'Created'];
+  let sheetRows = '<row r="1">';
+  headers.forEach((h, i) => {
+    const col = String.fromCharCode(65 + i);
+    sheetRows += `<c r="${col}1" t="inlineStr"><is><t>${escapeXml(h)}</t></is></c>`;
+  });
+  sheetRows += '</row>';
+
+  annotations.forEach((ann, idx) => {
+    const r = idx + 2;
+    const noteText = ann.text || ann.note || '';
+    const measurement = ann.realLength || '';
+    const created = new Date(ann.createdAt).toISOString();
+    sheetRows += `<row r="${r}">`;
+    sheetRows += `<c r="A${r}" t="inlineStr"><is><t>${escapeXml(ann.type)}</t></is></c>`;
+    sheetRows += `<c r="B${r}" t="inlineStr"><is><t>${escapeXml(noteText)}</t></is></c>`;
+    sheetRows += `<c r="C${r}" t="inlineStr"><is><t>${escapeXml(measurement)}</t></is></c>`;
+    sheetRows += `<c r="D${r}"><v>${ann.x.toFixed(0)}</v></c>`;
+    sheetRows += `<c r="E${r}"><v>${ann.y.toFixed(0)}</v></c>`;
+    sheetRows += `<c r="F${r}" t="inlineStr"><is><t>${escapeXml(created)}</t></is></c>`;
+    sheetRows += '</row>';
+  });
+
+  const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<sheetData>${sheetRows}</sheetData>
+</worksheet>`;
+
+  const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+</Types>`;
+
+  const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`;
+
+  const workbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<sheets><sheet name="Annotations" sheetId="1" r:id="rId1"/></sheets>
+</workbook>`;
+
+  const workbookRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>`;
+
+  // Build the ZIP using the minimal ZIP spec (no compression - store only)
+  const enc = new TextEncoder();
+  const files: { path: string; data: Uint8Array }[] = [
+    { path: '[Content_Types].xml', data: enc.encode(contentTypes) },
+    { path: '_rels/.rels', data: enc.encode(rels) },
+    { path: 'xl/workbook.xml', data: enc.encode(workbook) },
+    { path: 'xl/_rels/workbook.xml.rels', data: enc.encode(workbookRels) },
+    { path: 'xl/worksheets/sheet1.xml', data: enc.encode(sheet) },
+  ];
+
+  const blob = buildZipBlob(files);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'chartdeck-annotations.xlsx';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/** Build a minimal ZIP blob (store method, no compression) */
+function buildZipBlob(files: { path: string; data: Uint8Array }[]): Blob {
+  const enc = new TextEncoder();
+  const parts: Uint8Array[] = [];
+  const centralDir: Uint8Array[] = [];
+  let offset = 0;
+
+  for (const file of files) {
+    const nameBytes = enc.encode(file.path);
+    const crc = crc32(file.data);
+
+    // Local file header
+    const localHeader = new Uint8Array(30 + nameBytes.length);
+    const lv = new DataView(localHeader.buffer);
+    lv.setUint32(0, 0x04034b50, true); // sig
+    lv.setUint16(4, 20, true);          // version needed
+    lv.setUint16(6, 0, true);           // flags
+    lv.setUint16(8, 0, true);           // compression: store
+    lv.setUint16(10, 0, true);          // mod time
+    lv.setUint16(12, 0, true);          // mod date
+    lv.setUint32(14, crc, true);        // crc32
+    lv.setUint32(18, file.data.length, true); // compressed size
+    lv.setUint32(22, file.data.length, true); // uncompressed size
+    lv.setUint16(26, nameBytes.length, true); // name length
+    lv.setUint16(28, 0, true);          // extra length
+    localHeader.set(nameBytes, 30);
+
+    // Central directory entry
+    const cdEntry = new Uint8Array(46 + nameBytes.length);
+    const cv = new DataView(cdEntry.buffer);
+    cv.setUint32(0, 0x02014b50, true);
+    cv.setUint16(4, 20, true);
+    cv.setUint16(6, 20, true);
+    cv.setUint16(8, 0, true);
+    cv.setUint16(10, 0, true);
+    cv.setUint16(12, 0, true);
+    cv.setUint16(14, 0, true);
+    cv.setUint32(16, crc, true);
+    cv.setUint32(20, file.data.length, true);
+    cv.setUint32(24, file.data.length, true);
+    cv.setUint16(28, nameBytes.length, true);
+    cv.setUint16(30, 0, true);
+    cv.setUint16(32, 0, true);
+    cv.setUint16(34, 0, true);
+    cv.setUint16(36, 0, true);
+    cv.setUint32(38, 0x20, true); // external attrs
+    cv.setUint32(42, offset, true);
+    cdEntry.set(nameBytes, 46);
+    centralDir.push(cdEntry);
+
+    parts.push(localHeader);
+    parts.push(file.data);
+    offset += localHeader.length + file.data.length;
+  }
+
+  const cdOffset = offset;
+  let cdSize = 0;
+  for (const cd of centralDir) {
+    parts.push(cd);
+    cdSize += cd.length;
+  }
+
+  // End of central directory
+  const eocd = new Uint8Array(22);
+  const ev = new DataView(eocd.buffer);
+  ev.setUint32(0, 0x06054b50, true);
+  ev.setUint16(4, 0, true);
+  ev.setUint16(6, 0, true);
+  ev.setUint16(8, files.length, true);
+  ev.setUint16(10, files.length, true);
+  ev.setUint32(12, cdSize, true);
+  ev.setUint32(16, cdOffset, true);
+  ev.setUint16(20, 0, true);
+  parts.push(eocd);
+
+  return new Blob(parts as BlobPart[], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+
+/** Simple CRC32 implementation */
+function crc32(data: Uint8Array): number {
+  let crc = 0xFFFFFFFF;
+  for (let i = 0; i < data.length; i++) {
+    crc ^= data[i];
+    for (let j = 0; j < 8; j++) {
+      crc = (crc >>> 1) ^ (crc & 1 ? 0xEDB88320 : 0);
+    }
+  }
+  return (crc ^ 0xFFFFFFFF) >>> 0;
 }

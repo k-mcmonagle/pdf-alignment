@@ -5,6 +5,7 @@ import type {
   ArrangeMode,
   CanvasNode,
   DrawStyle,
+  MeasureCalibration,
   PdfDocument,
   ToolType,
   Viewport,
@@ -77,6 +78,13 @@ export interface AppState {
 
   // ─── Arrange ──────────────────────────────────────
   arrangeNodes: (mode: ArrangeMode) => void;
+
+  // ─── Measure Calibration ──────────────────────────
+  measureCalibration: MeasureCalibration | null;
+  setMeasureCalibration: (cal: MeasureCalibration | null) => void;
+  /** Pending calibration line pixel length, awaiting user input */
+  pendingCalibrationPixels: number | null;
+  setPendingCalibrationPixels: (px: number | null) => void;
 
   // ─── Bulk ─────────────────────────────────────────
   loadProject: (project: WorkspaceProject) => void;
@@ -187,7 +195,7 @@ export const useStore = create<AppState>()(
     // ─── Arrange ──────────────────────────────────────
     arrangeNodes: (mode) =>
       set((s) => {
-        const gap = 60;
+        const gap = s.settings.arrangeGap;
         const sorted = [...s.nodes].sort((a, b) => {
           const docA = s.documents.findIndex((d) => d.id === a.documentId);
           const docB = s.documents.findIndex((d) => d.id === b.documentId);
@@ -235,6 +243,12 @@ export const useStore = create<AppState>()(
         });
         return { nodes: updated, isDirty: true };
       }),
+
+    // ─── Measure Calibration ──────────────────────────
+    measureCalibration: null,
+    setMeasureCalibration: (cal) => set({ measureCalibration: cal }),
+    pendingCalibrationPixels: null,
+    setPendingCalibrationPixels: (px) => set({ pendingCalibrationPixels: px }),
 
     // ─── Bulk ─────────────────────────────────────────
     loadProject: (project) =>

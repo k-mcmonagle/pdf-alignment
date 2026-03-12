@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useStore } from '../store/useStore';
-import { autosaveWorkspace } from '../lib/storage';
+import { autosaveWorkspace, savePdfBuffers } from '../lib/storage';
+import { getAllBuffers } from '../lib/pdf';
 
 /** Autosave workspace to IndexedDB when dirty, debounced */
 export function useAutosave(intervalMs = 5000) {
@@ -14,6 +15,11 @@ export function useAutosave(intervalMs = 5000) {
     try {
       const project = getProject();
       await autosaveWorkspace(project);
+      // Also persist PDF binary buffers
+      const buffers = getAllBuffers();
+      if (Object.keys(buffers).length > 0) {
+        await savePdfBuffers(buffers);
+      }
       markClean();
     } catch (err) {
       console.warn('Autosave failed:', err);

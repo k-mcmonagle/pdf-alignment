@@ -1,7 +1,7 @@
 import { Rect, Ellipse, Arrow, Line, Group, Text } from 'react-konva';
 import type Konva from 'konva';
 import { useStore } from '../../store/useStore';
-import type { Annotation } from '../../types';
+import type { Annotation, MeasureAnnotation } from '../../types';
 
 export function AnnotationRenderer() {
   const annotations = useStore((s) => s.annotations);
@@ -167,6 +167,55 @@ export function AnnotationRenderer() {
                 />
               </Group>
             );
+
+          case 'measure': {
+            const m = ann as MeasureAnnotation;
+            const dx = m.points[2] - m.points[0];
+            const dy = m.points[3] - m.points[1];
+            const len = Math.sqrt(dx * dx + dy * dy) || 1;
+            const nx = -dy / len * 6;
+            const ny = dx / len * 6;
+            const midX = (m.points[0] + m.points[2]) / 2;
+            const midY = (m.points[1] + m.points[3]) / 2;
+            const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+            // Flip label if line goes right-to-left so text reads left-to-right
+            const labelRotation = (angle > 90 || angle < -90) ? angle + 180 : angle;
+            return (
+              <Group key={ann.id} {...common}>
+                {/* Main dashed line */}
+                <Line
+                  points={m.points}
+                  stroke="#22d3ee"
+                  strokeWidth={2}
+                  dash={[8, 4]}
+                />
+                {/* Start cap */}
+                <Line
+                  points={[m.points[0] + nx, m.points[1] + ny, m.points[0] - nx, m.points[1] - ny]}
+                  stroke="#22d3ee"
+                  strokeWidth={2}
+                />
+                {/* End cap */}
+                <Line
+                  points={[m.points[2] + nx, m.points[3] + ny, m.points[2] - nx, m.points[3] - ny]}
+                  stroke="#22d3ee"
+                  strokeWidth={2}
+                />
+                {/* Distance label */}
+                <Text
+                  x={midX}
+                  y={midY - 10}
+                  text={m.realLength}
+                  fontSize={13}
+                  fontFamily="Inter, sans-serif"
+                  fill="#22d3ee"
+                  rotation={labelRotation}
+                  offsetX={0}
+                  align="center"
+                />
+              </Group>
+            );
+          }
 
           default:
             return null;

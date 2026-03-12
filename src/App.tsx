@@ -8,10 +8,12 @@ import { Canvas } from './features/canvas/Canvas';
 import { LoadingOverlay } from './components/ui/LoadingOverlay';
 import { EmptyState } from './components/ui/EmptyState';
 import { DropZoneOverlay } from './components/ui/DropZoneOverlay';
+import { CalibrationDialog } from './components/ui/CalibrationDialog';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useAutosave } from './hooks/useAutosave';
 import { useStore } from './store/useStore';
-import { loadAutosave } from './lib/storage';
+import { loadAutosave, loadPdfBuffers } from './lib/storage';
+import { restorePdfFromBuffer } from './lib/pdf';
 
 export default function App() {
   const documents = useStore((s) => s.documents);
@@ -26,11 +28,24 @@ export default function App() {
 
   // Load autosaved workspace on mount
   useEffect(() => {
-    loadAutosave().then((project) => {
+    async function restore() {
+      const project = await loadAutosave();
       if (project && project.documents?.length > 0) {
+        // Restore PDF binary buffers before loading project so pages can render
+        const buffers = await loadPdfBuffers();
+        if (buffers) {
+          for (const docId of Object.keys(buffers)) {
+            try {
+              await restorePdfFromBuffer(docId, buffers[docId]);
+            } catch (err) {
+              console.warn(`Failed to restore PDF buffer for ${docId}:`, err);
+            }
+          }
+        }
         loadProject(project);
       }
-    });
+    }
+    restore();
   }, [loadProject]);
 
   return (
@@ -48,7 +63,7 @@ export default function App() {
 
         {/* Canvas area */}
         <DropZoneOverlay>
-          <div className="flex-1 relative" style={{ backgroundColor: '#1a2332' }}>
+          <div className="flex-1 flex flex-col relative min-w-0" style={{ backgroundColor: '#1a2332' }}>
             <Canvas />
             {!hasDocuments && <EmptyState />}
             <ZoomControls />
@@ -61,6 +76,9 @@ export default function App() {
 
       {/* Loading overlay */}
       <LoadingOverlay />
+
+      {/* Calibration dialog */}
+      <CalibrationDialog />
     </div>
   );
 }

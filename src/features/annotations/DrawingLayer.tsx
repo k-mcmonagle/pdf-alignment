@@ -11,6 +11,7 @@ import type {
   PenAnnotation,
   HighlightAnnotation,
   TextAnnotation,
+  MeasureAnnotation,
 } from '../../types';
 import { uid } from '../../lib/utils';
 
@@ -33,11 +34,13 @@ export function DrawingLayer({ stageRef }: DrawingLayerProps) {
   const setActiveTool = useStore((s) => s.setActiveTool);
   const setSelectedAnnotationIds = useStore((s) => s.setSelectedAnnotationIds);
   const viewport = useStore((s) => s.viewport);
+  const measureCalibration = useStore((s) => s.measureCalibration);
+  const setPendingCalibrationPixels = useStore((s) => s.setPendingCalibrationPixels);
 
   const [draw, setDraw] = useState<DrawState | null>(null);
   const pointsRef = useRef<number[]>([]);
 
-  const drawingTools = ['pen', 'rect', 'ellipse', 'arrow', 'line', 'highlight', 'text'];
+  const drawingTools = ['pen', 'rect', 'ellipse', 'arrow', 'line', 'highlight', 'text', 'measure'];
   const isDrawingTool = drawingTools.includes(activeTool);
 
   const getRelativePointerPosition = useCallback(() => {
@@ -187,6 +190,26 @@ export function DrawingLayer({ stageRef }: DrawingLayerProps) {
           } as HighlightAnnotation;
           break;
         }
+        case 'measure': {
+          const pixelLength = Math.sqrt(dx * dx + dy * dy);
+          if (!measureCalibration) {
+            // No calibration yet: ask the user to calibrate
+            setPendingCalibrationPixels(pixelLength);
+            setDraw(null);
+            pointsRef.current = [];
+            return;
+          }
+          const realDist = (pixelLength / measureCalibration.pixelLength) * measureCalibration.realValue;
+          const realLength = `${realDist.toFixed(2)} ${measureCalibration.unit}`;
+          annotation = {
+            ...base, id: uid(), type: 'measure', x: 0, y: 0,
+            points: [draw.startX, draw.startY, draw.currentX, draw.currentY],
+            pixelLength,
+            realLength,
+            stroke: '#22d3ee',
+          } as MeasureAnnotation;
+          break;
+        }
       }
 
       if (annotation) {
@@ -198,7 +221,7 @@ export function DrawingLayer({ stageRef }: DrawingLayerProps) {
 
     setDraw(null);
     pointsRef.current = [];
-  }, [draw, activeTool, drawStyle, addAnnotation, setActiveTool, setSelectedAnnotationIds]);
+  }, [draw, activeTool, drawStyle, addAnnotation, setActiveTool, setSelectedAnnotationIds, measureCalibration, setPendingCalibrationPixels]);
 
   if (!isDrawingTool) return null;
 
@@ -286,6 +309,44 @@ export function DrawingLayer({ stageRef }: DrawingLayerProps) {
           opacity={drawStyle.opacity}
           listening={false}
         />
+      )}
+      {draw && activeTool === 'measure' && (
+        <>
+          <Line
+            points={[draw.startX, draw.startY, draw.currentX, draw.currentY]}
+            stroke="#22d3ee"
+            strokeWidth={2}
+            dash={[8, 4]}
+            listening={false}
+          />
+          {/* End caps */}
+          <Line
+            points={(() => {
+              const dx = draw.currentX - draw.startX;
+              const dy = draw.currentY - draw.startY;
+              const len = Math.sqrt(dx * dx + dy * dy) || 1;
+              const nx = -dy / len * 6;
+              const ny = dx / len * 6;
+              return [draw.startX + nx, draw.startY + ny, draw.startX - nx, draw.startY - ny];
+            })()}
+            stroke="#22d3ee"
+            strokeWidth={2}
+            listening={false}
+          />
+          <Line
+            points={(() => {
+              const dx = draw.currentX - draw.startX;
+              const dy = draw.currentY - draw.startY;
+              const len = Math.sqrt(dx * dx + dy * dy) || 1;
+              const nx = -dy / len * 6;
+              const ny = dx / len * 6;
+              return [draw.currentX + nx, draw.currentY + ny, draw.currentX - nx, draw.currentY - ny];
+            })()}
+            stroke="#22d3ee"
+            strokeWidth={2}
+            listening={false}
+          />
+        </>
       )}
     </Group>
   );

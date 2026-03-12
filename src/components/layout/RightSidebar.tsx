@@ -13,6 +13,7 @@ import {
   Type,
   Highlighter,
   StickyNote,
+  Ruler,
 } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import type { Annotation, ShapeType } from '../../types';
@@ -25,6 +26,7 @@ const typeIcons: Record<ShapeType, React.ReactNode> = {
   pen: <Pen size={14} />,
   text: <Type size={14} />,
   highlight: <Highlighter size={14} />,
+  measure: <Ruler size={14} />,
 };
 
 const typeLabels: Record<ShapeType, string> = {
@@ -35,6 +37,7 @@ const typeLabels: Record<ShapeType, string> = {
   pen: 'Freehand',
   text: 'Note',
   highlight: 'Highlight',
+  measure: 'Measurement',
 };
 
 export function RightSidebar() {
@@ -89,14 +92,16 @@ export function RightSidebar() {
 
   if (!rightSidebarOpen) {
     return (
-      <button
-        onClick={toggleRightSidebar}
-        className="absolute top-3 right-3 z-30 btn-icon bg-slate-800 border border-slate-700"
-        title="Open annotations panel"
-        aria-label="Open annotations panel"
-      >
-        <MessageSquare size={16} />
-      </button>
+      <div className="w-10 bg-slate-800/95 border-l border-slate-700/50 flex flex-col items-center pt-3 shrink-0 z-10">
+        <button
+          onClick={toggleRightSidebar}
+          className="btn-icon bg-slate-700 border border-slate-600"
+          title="Open annotations panel"
+          aria-label="Open annotations panel"
+        >
+          <MessageSquare size={16} />
+        </button>
+      </div>
     );
   }
 
@@ -210,7 +215,21 @@ export function RightSidebar() {
                 </div>
 
                 {/* Note/text editing */}
-                {ann.type === 'text' ? (
+                {ann.type === 'measure' ? (
+                  <div className="px-2.5 pb-2">
+                    <div className="text-xs text-cyan-400 font-mono mb-1">
+                      {(ann as { realLength: string }).realLength}
+                    </div>
+                    <textarea
+                      className="input-field text-xs resize-none"
+                      rows={1}
+                      placeholder="Add a note…"
+                      value={ann.note}
+                      onChange={(e) => handleNoteChange(ann.id, e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </div>
+                ) : ann.type === 'text' ? (
                   <div className="px-2.5 pb-2">
                     <textarea
                       className="input-field text-xs resize-none"

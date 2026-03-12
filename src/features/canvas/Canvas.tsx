@@ -236,12 +236,13 @@ export function Canvas() {
     line: 'crosshair',
     text: 'text',
     highlight: 'crosshair',
+    measure: 'crosshair',
   };
 
   return (
     <div
       ref={containerRef}
-      className="flex-1 relative overflow-hidden"
+      className="flex-1 relative overflow-hidden min-h-0"
       style={{ cursor: cursorMap[activeTool] || 'default' }}
     >
       <Stage

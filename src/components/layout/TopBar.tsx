@@ -5,6 +5,7 @@ import {
   Download,
   Image,
   FileDown,
+  FileSpreadsheet,
   Settings,
   Undo2,
   Grid3x3,
@@ -12,7 +13,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { useStore } from '../../store/useStore';
-import { downloadProjectJson, importProjectJson, downloadImage, downloadAnnotationsCsv } from '../../lib/storage';
+import { downloadProjectJson, importProjectJson, downloadImage, downloadAnnotationsCsv, downloadAnnotationsXlsx } from '../../lib/storage';
 
 export function TopBar() {
   const projectName = useStore((s) => s.projectName);
@@ -65,6 +66,21 @@ export function TopBar() {
       annotations.map((a) => ({
         type: a.type,
         note: a.note,
+        x: a.x,
+        y: a.y,
+        createdAt: a.createdAt,
+      })),
+    );
+  }, [annotations]);
+
+  const handleExportExcel = useCallback(() => {
+    if (annotations.length === 0) return;
+    downloadAnnotationsXlsx(
+      annotations.map((a) => ({
+        type: a.type,
+        note: a.note,
+        text: (a as { text?: string }).text,
+        realLength: (a as { realLength?: string }).realLength,
         x: a.x,
         y: a.y,
         createdAt: a.createdAt,
@@ -166,6 +182,16 @@ export function TopBar() {
           title="Export annotations as CSV"
         >
           <FileDown size={14} />
+        </button>
+      )}
+
+      {annotations.length > 0 && (
+        <button
+          onClick={handleExportExcel}
+          className="btn-icon"
+          title="Export annotations as Excel"
+        >
+          <FileSpreadsheet size={14} />
         </button>
       )}
 

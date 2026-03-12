@@ -39,7 +39,7 @@ export function DropZoneOverlay({ children }: { children: React.ReactNode }) {
 
   return (
     <div
-      className="relative flex-1 flex"
+      className="relative flex-1 flex min-w-0"
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}

@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   FilePlus,
   Trash2,
@@ -11,6 +11,7 @@ import {
   ChevronLeft,
   FileText,
   Eye,
+  GripVertical,
 } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { usePdfLoader } from '../../hooks/usePdfLoader';
@@ -33,6 +34,9 @@ export function LeftSidebar() {
   const { loadFiles, removeFile } = usePdfLoader();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const reorderDocuments = useStore((s) => s.reorderDocuments);
 
   const handleFileChange = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -114,14 +118,16 @@ export function LeftSidebar() {
 
   if (!leftSidebarOpen) {
     return (
-      <button
-        onClick={toggleLeftSidebar}
-        className="absolute top-3 left-14 z-30 btn-icon bg-slate-800 border border-slate-700"
-        title="Open document panel"
-        aria-label="Open document panel"
-      >
-        <FileText size={16} />
-      </button>
+      <div className="w-10 bg-slate-800/95 border-r border-slate-700/50 flex flex-col items-center pt-3 shrink-0 z-10">
+        <button
+          onClick={toggleLeftSidebar}
+          className="btn-icon bg-slate-700 border border-slate-600"
+          title="Open document panel"
+          aria-label="Open document panel"
+        >
+          <FileText size={16} />
+        </button>
+      </div>
     );
   }
 
@@ -155,22 +161,54 @@ export function LeftSidebar() {
             </p>
           </div>
         ) : (
-          documents.map((doc) => {
+          documents.map((doc, index) => {
             const docNodes = nodes.filter((n) => n.documentId === doc.id);
             const isAnySelected = docNodes.some((n) =>
               selectedNodeIds.includes(n.id),
             );
+            const isDragging = dragIndex === index;
+            const isDragOver = dragOverIndex === index;
 
             return (
               <div
                 key={doc.id}
+                draggable
+                onDragStart={(e) => {
+                  setDragIndex(index);
+                  e.dataTransfer.effectAllowed = 'move';
+                  e.dataTransfer.setData('text/plain', String(index));
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                  setDragOverIndex(index);
+                }}
+                onDragLeave={() => {
+                  setDragOverIndex(null);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (dragIndex !== null && dragIndex !== index) {
+                    reorderDocuments(dragIndex, index);
+                  }
+                  setDragIndex(null);
+                  setDragOverIndex(null);
+                }}
+                onDragEnd={() => {
+                  setDragIndex(null);
+                  setDragOverIndex(null);
+                }}
                 className={`group flex items-center gap-2 px-2.5 py-2 rounded-md cursor-pointer transition-colors text-sm
-                  ${isAnySelected ? 'bg-brand-600/20 border border-brand-500/30' : 'hover:bg-slate-700/50 border border-transparent'}`}
+                  ${isAnySelected ? 'bg-brand-600/20 border border-brand-500/30' : 'hover:bg-slate-700/50 border border-transparent'}
+                  ${isDragging ? 'opacity-40' : ''}
+                  ${isDragOver ? 'border-t-2 !border-t-brand-400' : ''}`}
                 onClick={() => handleFocusDoc(doc)}
                 role="button"
                 tabIndex={0}
                 onKeyDown={(e) => e.key === 'Enter' && handleFocusDoc(doc)}
               >
+                <GripVertical size={14} className="text-slate-500 shrink-0 cursor-grab active:cursor-grabbing" />
                 <FileText size={16} className="text-brand-400 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <div className="truncate text-slate-200 text-xs font-medium">
@@ -257,6 +295,20 @@ export function LeftSidebar() {
                 <Grid3x3 size={12} />
                 Grid
               </button>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-slate-400 w-14">Gap</label>
+              <input
+                type="range"
+                min="10"
+                max="200"
+                step="10"
+                value={settings.arrangeGap}
+                onChange={(e) => updateSettings({ arrangeGap: Number(e.target.value) })}
+                className="flex-1 accent-brand-500"
+                title={`Page spacing: ${settings.arrangeGap}px`}
+              />
+              <span className="text-xs text-slate-500 w-8">{settings.arrangeGap}px</span>
             </div>
           </>
         )}

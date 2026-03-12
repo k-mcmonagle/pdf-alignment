@@ -102,6 +102,25 @@ export function removeCachedPdfDoc(docId: string) {
   bufferCache.delete(docId);
 }
 
+/** Return all stored buffers as a plain object (for saving to IndexedDB) */
+export function getAllBuffers(): Record<string, ArrayBuffer> {
+  const result: Record<string, ArrayBuffer> = {};
+  bufferCache.forEach((buf, id) => {
+    result[id] = buf;
+  });
+  return result;
+}
+
+/** Restore a PDF document from a saved ArrayBuffer */
+export async function restorePdfFromBuffer(
+  docId: string,
+  buffer: ArrayBuffer,
+): Promise<void> {
+  const pdfDoc = await pdfjsLib.getDocument({ data: buffer.slice(0) }).promise;
+  pdfCache.set(docId, pdfDoc);
+  bufferCache.set(docId, buffer);
+}
+
 export function clearPdfCache() {
   pdfCache.forEach((doc) => doc.destroy());
   pdfCache.clear();

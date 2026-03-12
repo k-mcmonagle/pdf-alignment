@@ -8,10 +8,11 @@ export type ToolType =
   | 'arrow'
   | 'line'
   | 'text'
-  | 'highlight';
+  | 'highlight'
+  | 'measure';
 
 // ─── Annotation Shape Types ──────────────────────────────────
-export type ShapeType = 'rect' | 'ellipse' | 'arrow' | 'line' | 'pen' | 'text' | 'highlight';
+export type ShapeType = 'rect' | 'ellipse' | 'arrow' | 'line' | 'pen' | 'text' | 'highlight' | 'measure';
 
 export interface AnnotationBase {
   id: string;
@@ -71,6 +72,15 @@ export interface HighlightAnnotation extends AnnotationBase {
   height: number;
 }
 
+export interface MeasureAnnotation extends AnnotationBase {
+  type: 'measure';
+  points: number[]; // [x1, y1, x2, y2]
+  /** Pixel distance of the drawn line */
+  pixelLength: number;
+  /** Real-world distance label entered by user (e.g. "5.2 m") */
+  realLength: string;
+}
+
 export type Annotation =
   | RectAnnotation
   | EllipseAnnotation
@@ -78,7 +88,8 @@ export type Annotation =
   | LineAnnotation
   | PenAnnotation
   | TextAnnotation
-  | HighlightAnnotation;
+  | HighlightAnnotation
+  | MeasureAnnotation;
 
 // ─── PDF Document Types ──────────────────────────────────────
 export interface PdfPageInfo {
@@ -122,6 +133,14 @@ export interface WorkspaceSettings {
   gridSize: number;
   renderScale: number; // PDF render quality (0.5 = low, 1 = normal, 2 = high)
   backgroundColor: string;
+  arrangeGap: number; // Spacing between pages in arrange mode
+}
+
+/** Calibration: maps a pixel distance to a real-world distance */
+export interface MeasureCalibration {
+  pixelLength: number;
+  realValue: number;
+  unit: string; // e.g. 'm', 'ft', 'mm'
 }
 
 export interface WorkspaceProject {
@@ -159,6 +178,7 @@ export const DEFAULT_SETTINGS: WorkspaceSettings = {
   gridSize: 50,
   renderScale: 1.5,
   backgroundColor: '#1e293b',
+  arrangeGap: 60,
 };
 
 export const DEFAULT_DRAW_STYLE: DrawStyle = {

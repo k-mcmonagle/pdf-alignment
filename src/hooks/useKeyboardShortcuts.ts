@@ -39,6 +39,7 @@ export function useKeyboardShortcuts() {
         a: 'arrow',
         l: 'line',
         t: 'text',
+        m: 'measure',
       };
 
       if (toolMap[e.key]) {
