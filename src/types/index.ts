@@ -14,6 +14,8 @@ export type ToolType =
 // ─── Annotation Shape Types ──────────────────────────────────
 export type ShapeType = 'rect' | 'ellipse' | 'arrow' | 'line' | 'pen' | 'text' | 'highlight' | 'measure';
 
+export type DashStyle = 'solid' | 'dashed' | 'dotted';
+
 export interface AnnotationBase {
   id: string;
   type: ShapeType;
@@ -26,6 +28,7 @@ export interface AnnotationBase {
   strokeWidth: number;
   opacity: number;
   fill: string;
+  dash: DashStyle;
   locked: boolean;
   note: string;
   createdAt: number;
@@ -35,6 +38,7 @@ export interface RectAnnotation extends AnnotationBase {
   type: 'rect';
   width: number;
   height: number;
+  cornerRadius: number;
 }
 
 export interface EllipseAnnotation extends AnnotationBase {
@@ -169,6 +173,7 @@ export interface DrawStyle {
   fill: string;
   opacity: number;
   fontSize: number;
+  dash: DashStyle;
 }
 
 // ─── Defaults ────────────────────────────────────────────────
@@ -187,6 +192,16 @@ export const DEFAULT_DRAW_STYLE: DrawStyle = {
   fill: 'transparent',
   opacity: 1,
   fontSize: 16,
+  dash: 'solid',
 };
+
+/** Convert DashStyle to Konva dash array */
+export function getDashArray(dash: DashStyle, strokeWidth: number): number[] | undefined {
+  switch (dash) {
+    case 'dashed': return [strokeWidth * 4, strokeWidth * 2];
+    case 'dotted': return [strokeWidth, strokeWidth * 2];
+    default: return undefined;
+  }
+}
 
 export const DEFAULT_VIEWPORT: Viewport = { x: 0, y: 0, zoom: 1 };

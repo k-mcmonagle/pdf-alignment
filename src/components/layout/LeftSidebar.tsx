@@ -22,6 +22,8 @@ export function LeftSidebar() {
   const documents = useStore((s) => s.documents);
   const nodes = useStore((s) => s.nodes);
   const arrangeNodes = useStore((s) => s.arrangeNodes);
+  const lastArrangeMode = useStore((s) => s.lastArrangeMode);
+  const annotations = useStore((s) => s.annotations);
   const leftSidebarOpen = useStore((s) => s.leftSidebarOpen);
   const toggleLeftSidebar = useStore((s) => s.toggleLeftSidebar);
   const selectedNodeIds = useStore((s) => s.selectedNodeIds);
@@ -36,6 +38,7 @@ export function LeftSidebar() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const isInternalDragRef = useRef(false);
   const reorderDocuments = useStore((s) => s.reorderDocuments);
 
   const handleFileChange = useCallback(
@@ -52,6 +55,7 @@ export function LeftSidebar() {
   const handleDrop = useCallback(
     async (e: React.DragEvent) => {
       e.preventDefault();
+      if (isInternalDragRef.current) return; // internal reorder, don't treat as file drop
       const files = Array.from(e.dataTransfer.files).filter(
         (f) => f.type === 'application/pdf',
       );
@@ -64,7 +68,9 @@ export function LeftSidebar() {
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
+    if (!isInternalDragRef.current) {
+      e.dataTransfer.dropEffect = 'copy';
+    }
   }, []);
 
   const handleRemoveDoc = useCallback(
@@ -175,11 +181,13 @@ export function LeftSidebar() {
                 draggable
                 onDragStart={(e) => {
                   setDragIndex(index);
+                  isInternalDragRef.current = true;
                   e.dataTransfer.effectAllowed = 'move';
-                  e.dataTransfer.setData('text/plain', String(index));
+                  e.dataTransfer.setData('text/x-reorder', String(index));
                 }}
                 onDragOver={(e) => {
                   e.preventDefault();
+                  e.stopPropagation();
                   e.dataTransfer.dropEffect = 'move';
                   setDragOverIndex(index);
                 }}
@@ -190,14 +198,32 @@ export function LeftSidebar() {
                   e.preventDefault();
                   e.stopPropagation();
                   if (dragIndex !== null && dragIndex !== index) {
+                    const hasAnnotations = useStore.getState().annotations.length > 0;
+                    if (hasAnnotations) {
+                      const proceed = window.confirm(
+                        'Reordering will rearrange PDFs on the canvas. Existing annotations may shift relative to their pages.\n\nProceed?',
+                      );
+                      if (!proceed) {
+                        setDragIndex(null);
+                        setDragOverIndex(null);
+                        isInternalDragRef.current = false;
+                        return;
+                      }
+                    }
                     reorderDocuments(dragIndex, index);
+                    // Auto-rearrange on canvas using the last-used layout
+                    setTimeout(() => {
+                      useStore.getState().arrangeNodes(useStore.getState().lastArrangeMode);
+                    }, 0);
                   }
                   setDragIndex(null);
                   setDragOverIndex(null);
+                  isInternalDragRef.current = false;
                 }}
                 onDragEnd={() => {
                   setDragIndex(null);
                   setDragOverIndex(null);
+                  isInternalDragRef.current = false;
                 }}
                 className={`group flex items-center gap-2 px-2.5 py-2 rounded-md cursor-pointer transition-colors text-sm
                   ${isAnySelected ? 'bg-brand-600/20 border border-brand-500/30' : 'hover:bg-slate-700/50 border border-transparent'}
@@ -272,7 +298,7 @@ export function LeftSidebar() {
             <div className="panel-heading px-0 pb-0">Arrange</div>
             <div className="flex gap-1">
               <button
-                className="btn-secondary flex-1 text-xs"
+                className={`flex-1 text-xs ${lastArrangeMode === 'horizontal' ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => handleArrange('horizontal')}
                 title="Arrange horizontally"
               >
@@ -280,7 +306,7 @@ export function LeftSidebar() {
                 Row
               </button>
               <button
-                className="btn-secondary flex-1 text-xs"
+                className={`flex-1 text-xs ${lastArrangeMode === 'vertical' ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => handleArrange('vertical')}
                 title="Arrange vertically"
               >
@@ -288,7 +314,7 @@ export function LeftSidebar() {
                 Col
               </button>
               <button
-                className="btn-secondary flex-1 text-xs"
+                className={`flex-1 text-xs ${lastArrangeMode === 'grid' ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => handleArrange('grid')}
                 title="Arrange in grid"
               >

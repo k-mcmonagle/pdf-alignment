@@ -17,6 +17,7 @@ import {
   DEFAULT_SETTINGS,
   DEFAULT_VIEWPORT,
 } from '../types';
+import { uid } from '../lib/utils';
 
 export interface AppState {
   // ─── Tool ─────────────────────────────────────────
@@ -54,8 +55,11 @@ export interface AppState {
   annotations: Annotation[];
   addAnnotation: (a: Annotation) => void;
   updateAnnotation: (id: string, changes: Partial<Annotation>) => void;
-  removeAnnotation: (id: string) => void;
-
+  removeAnnotation: (id: string) => void;  duplicateAnnotation: (id: string) => void;
+  bringToFront: (id: string) => void;
+  sendToBack: (id: string) => void;
+  bringForward: (id: string) => void;
+  sendBackward: (id: string) => void;
   // ─── Settings ─────────────────────────────────────
   settings: WorkspaceSettings;
   updateSettings: (s: Partial<WorkspaceSettings>) => void;
@@ -77,6 +81,7 @@ export interface AppState {
   setLoading: (loading: boolean, message?: string) => void;
 
   // ─── Arrange ──────────────────────────────────────
+  lastArrangeMode: ArrangeMode;
   arrangeNodes: (mode: ArrangeMode) => void;
 
   // ─── Measure Calibration ──────────────────────────
@@ -166,6 +171,47 @@ export const useStore = create<AppState>()(
         annotations: s.annotations.filter((a) => a.id !== id),
         isDirty: true,
       })),
+    duplicateAnnotation: (id) =>
+      set((s) => {
+        const ann = s.annotations.find((a) => a.id === id);
+        if (!ann) return s;
+        const clone = { ...ann, id: uid(), x: ann.x + 20, y: ann.y + 20, createdAt: Date.now() } as Annotation;
+        return { annotations: [...s.annotations, clone], isDirty: true };
+      }),
+    bringToFront: (id) =>
+      set((s) => {
+        const idx = s.annotations.findIndex((a) => a.id === id);
+        if (idx < 0) return s;
+        const arr = [...s.annotations];
+        const [item] = arr.splice(idx, 1);
+        arr.push(item);
+        return { annotations: arr, isDirty: true };
+      }),
+    sendToBack: (id) =>
+      set((s) => {
+        const idx = s.annotations.findIndex((a) => a.id === id);
+        if (idx < 0) return s;
+        const arr = [...s.annotations];
+        const [item] = arr.splice(idx, 1);
+        arr.unshift(item);
+        return { annotations: arr, isDirty: true };
+      }),
+    bringForward: (id) =>
+      set((s) => {
+        const idx = s.annotations.findIndex((a) => a.id === id);
+        if (idx < 0 || idx === s.annotations.length - 1) return s;
+        const arr = [...s.annotations];
+        [arr[idx], arr[idx + 1]] = [arr[idx + 1], arr[idx]];
+        return { annotations: arr, isDirty: true };
+      }),
+    sendBackward: (id) =>
+      set((s) => {
+        const idx = s.annotations.findIndex((a) => a.id === id);
+        if (idx <= 0) return s;
+        const arr = [...s.annotations];
+        [arr[idx - 1], arr[idx]] = [arr[idx], arr[idx - 1]];
+        return { annotations: arr, isDirty: true };
+      }),
 
     // ─── Settings ─────────────────────────────────────
     settings: { ...DEFAULT_SETTINGS },
@@ -193,6 +239,7 @@ export const useStore = create<AppState>()(
       set({ isLoading: loading, loadingMessage: message }),
 
     // ─── Arrange ──────────────────────────────────────
+    lastArrangeMode: 'horizontal' as ArrangeMode,
     arrangeNodes: (mode) =>
       set((s) => {
         const gap = s.settings.arrangeGap;
@@ -213,7 +260,7 @@ export const useStore = create<AppState>()(
             x += node.width * node.scaleX + gap;
             return n;
           });
-          return { nodes: updated, isDirty: true };
+          return { nodes: updated, isDirty: true, lastArrangeMode: mode };
         }
 
         if (mode === 'vertical') {
@@ -222,7 +269,7 @@ export const useStore = create<AppState>()(
             y += node.height * node.scaleY + gap;
             return n;
           });
-          return { nodes: updated, isDirty: true };
+          return { nodes: updated, isDirty: true, lastArrangeMode: mode };
         }
 
         // grid
@@ -241,7 +288,7 @@ export const useStore = create<AppState>()(
           }
           return n;
         });
-        return { nodes: updated, isDirty: true };
+        return { nodes: updated, isDirty: true, lastArrangeMode: mode };
       }),
 
     // ─── Measure Calibration ──────────────────────────

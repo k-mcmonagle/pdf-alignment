@@ -8,6 +8,7 @@ export function useKeyboardShortcuts() {
   const selectedAnnotationIds = useStore((s) => s.selectedAnnotationIds);
   const removeNode = useStore((s) => s.removeNode);
   const removeAnnotation = useStore((s) => s.removeAnnotation);
+  const duplicateAnnotation = useStore((s) => s.duplicateAnnotation);
   const setSelectedNodeIds = useStore((s) => s.setSelectedNodeIds);
   const setSelectedAnnotationIds = useStore((s) => s.setSelectedAnnotationIds);
 
@@ -23,10 +24,24 @@ export function useKeyboardShortcuts() {
     }
   };
 
+  const duplicateSelectedRef = useRef<() => void>();
+  duplicateSelectedRef.current = () => {
+    if (selectedAnnotationIds.length > 0) {
+      selectedAnnotationIds.forEach((id) => duplicateAnnotation(id));
+    }
+  };
+
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
+      }
+
+      // Ctrl/Cmd+D → duplicate
+      if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
+        e.preventDefault();
+        duplicateSelectedRef.current?.();
         return;
       }
 

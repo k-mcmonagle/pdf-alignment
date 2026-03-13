@@ -98,20 +98,20 @@ export function Canvas() {
     };
   }, [nodes, settings.renderScale]);
 
-  // ─── Transformer sync ─────────────────────────────────
+  // ─── Transformer sync (for PDF node selection only) ─────
   useEffect(() => {
     const tr = transformerRef.current;
     const stage = stageRef.current;
     if (!tr || !stage) return;
 
-    const allIds = [...selectedNodeIds, ...selectedAnnotationIds];
-    const selected = allIds
+    // Only attach PDF nodes to the shared transformer; annotations have their own
+    const selected = selectedNodeIds
       .map((id) => stage.findOne(`#${id}`))
       .filter(Boolean) as Konva.Node[];
 
     tr.nodes(selected);
     tr.getLayer()?.batchDraw();
-  }, [selectedNodeIds, selectedAnnotationIds]);
+  }, [selectedNodeIds]);
 
   // ─── Wheel zoom ────────────────────────────────────────
   const handleWheel = useCallback(
@@ -355,7 +355,7 @@ export function Canvas() {
           {/* Drawing layer (for active drawing) */}
           <DrawingLayer stageRef={stageRef} />
 
-          {/* Transformer */}
+          {/* Transformer for PDF page nodes only */}
           <Transformer
             ref={transformerRef}
             rotateEnabled={true}
