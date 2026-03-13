@@ -56,16 +56,32 @@ export function downloadProjectJson(project: WorkspaceProject) {
   URL.revokeObjectURL(url);
 }
 
+const MAX_IMPORT_JSON_SIZE = 50 * 1024 * 1024; // 50 MB
+
 /** Import project from a JSON file */
 export function importProjectJson(file: File): Promise<WorkspaceProject> {
+  if (file.size > MAX_IMPORT_JSON_SIZE) {
+    return Promise.reject(new Error('Project file exceeds the 50 MB size limit'));
+  }
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
         const data = JSON.parse(e.target?.result as string);
-        if (!data.version || !data.documents || !data.nodes) {
+        if (
+          typeof data.version !== 'string' ||
+          !Array.isArray(data.documents) ||
+          !Array.isArray(data.nodes)
+        ) {
           reject(new Error('Invalid ChartDeck project file'));
           return;
+        }
+        // Sanitize and clamp the project name from the imported file
+        data.name =
+          typeof data.name === 'string' ? data.name.slice(0, 100) : 'Imported Project';
+        // Ensure annotations is always an array
+        if (!Array.isArray(data.annotations)) {
+          data.annotations = [];
         }
         resolve(data as WorkspaceProject);
       } catch {
@@ -85,6 +101,14 @@ export function downloadImage(dataUrl: string, filename = 'chartdeck-export.png'
   a.click();
 }
 
+/** Prevent CSV formula injection by prefixing cells that start with formula-triggering characters */
+function sanitizeCsvCell(value: string): string {
+  if (/^[=+\-@\t\r]/.test(value)) {
+    return `'${value}`;
+  }
+  return value;
+}
+
 /** Export annotations as CSV */
 export function downloadAnnotationsCsv(
   annotations: { type: string; note: string; x: number; y: number; createdAt: number }[],
@@ -93,7 +117,7 @@ export function downloadAnnotationsCsv(
   const rows = annotations
     .map(
       (a) =>
-        `"${a.type}","${(a.note || '').replace(/"/g, '""')}",${a.x.toFixed(0)},${a.y.toFixed(0)},${new Date(a.createdAt).toISOString()}`,
+        `"${sanitizeCsvCell(a.type)}","${sanitizeCsvCell((a.note || '').replace(/"/g, '""'))}",${a.x.toFixed(0)},${a.y.toFixed(0)},${new Date(a.createdAt).toISOString()}`,
     )
     .join('\n');
   const csv = header + rows;

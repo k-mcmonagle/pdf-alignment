@@ -11,6 +11,8 @@ import {
 import type { CanvasNode } from '../types';
 import { uid } from '../lib/utils';
 
+const MAX_FILE_SIZE_BYTES = 200 * 1024 * 1024; // 200 MB
+
 export function usePdfLoader() {
   const addDocument = useStore((s) => s.addDocument);
   const addNode = useStore((s) => s.addNode);
@@ -24,7 +26,16 @@ export function usePdfLoader() {
     async (files: File[]) => {
       if (files.length === 0) return;
 
-      setLoading(true, `Loading ${files.length} PDF${files.length > 1 ? 's' : ''}…`);
+      const validFiles = files.filter((f) => {
+        if (f.size > MAX_FILE_SIZE_BYTES) {
+          console.warn(`Skipping "${f.name}": file exceeds 200 MB limit.`);
+          return false;
+        }
+        return true;
+      });
+      if (validFiles.length === 0) return;
+
+      setLoading(true, `Loading ${validFiles.length} PDF${validFiles.length > 1 ? 's' : ''}…`);
 
       try {
         // Calculate starting position based on existing nodes
@@ -35,7 +46,7 @@ export function usePdfLoader() {
         }
         let currentX = startX;
 
-        for (const file of files) {
+        for (const file of validFiles) {
           setLoading(true, `Loading ${file.name}…`);
 
           const { doc, pdfDoc, buffer } = await loadPdfDocument(file);

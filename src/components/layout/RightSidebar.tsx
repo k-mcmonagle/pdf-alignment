@@ -482,6 +482,7 @@ export function RightSidebar() {
                       className="input-field text-xs resize-none"
                       rows={1}
                       placeholder="Add a note…"
+                      maxLength={2000}
                       value={ann.note}
                       onChange={(e) => handleNoteChange(ann.id, e.target.value)}
                       onClick={(e) => e.stopPropagation()}
@@ -493,6 +494,7 @@ export function RightSidebar() {
                       className="input-field text-xs resize-none"
                       rows={2}
                       placeholder="Note text…"
+                      maxLength={2000}
                       value={(ann as { text: string }).text || ''}
                       onChange={(e) => handleTextChange(ann.id, e.target.value)}
                       onClick={(e) => e.stopPropagation()}
@@ -504,6 +506,7 @@ export function RightSidebar() {
                       className="input-field text-xs resize-none"
                       rows={1}
                       placeholder="Add a note…"
+                      maxLength={2000}
                       value={ann.note}
                       onChange={(e) => handleNoteChange(ann.id, e.target.value)}
                       onClick={(e) => e.stopPropagation()}

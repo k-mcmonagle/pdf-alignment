@@ -29,7 +29,26 @@ export default function App() {
   // Load autosaved workspace on mount
   useEffect(() => {
     async function restore() {
-      const project = await loadAutosave();
+      let project = await loadAutosave();
+
+      // Fall back to the emergency localStorage save if IndexedDB had nothing
+      if (!project?.documents?.length) {
+        try {
+          const raw = localStorage.getItem('chartdeck-emergency-save');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed?.documents?.length > 0) {
+              project = parsed;
+            }
+          }
+        } catch {
+          // Ignore parse errors — corrupt data is silently discarded
+        }
+      }
+
+      // Always remove the emergency save to avoid stale data accumulating
+      localStorage.removeItem('chartdeck-emergency-save');
+
       if (project && project.documents?.length > 0) {
         // Restore PDF binary buffers before loading project so pages can render
         const buffers = await loadPdfBuffers();

@@ -110,6 +110,7 @@ export function TopBar() {
         type="text"
         value={projectName}
         onChange={(e) => setProjectName(e.target.value)}
+        maxLength={100}
         className="bg-transparent border-none text-sm text-slate-300 font-medium w-48 
                    focus:outline-none focus:ring-1 focus:ring-brand-500/50 rounded px-1.5 py-0.5
                    hover:bg-slate-800 transition-colors"
