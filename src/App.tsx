@@ -34,7 +34,7 @@ export default function App() {
       // Fall back to the emergency localStorage save if IndexedDB had nothing
       if (!project?.documents?.length) {
         try {
-          const raw = localStorage.getItem('chartdeck-emergency-save');
+          const raw = localStorage.getItem('alignpdf-emergency-save');
           if (raw) {
             const parsed = JSON.parse(raw);
             if (parsed?.documents?.length > 0) {
@@ -47,7 +47,7 @@ export default function App() {
       }
 
       // Always remove the emergency save to avoid stale data accumulating
-      localStorage.removeItem('chartdeck-emergency-save');
+      localStorage.removeItem('alignpdf-emergency-save');
 
       if (project && project.documents?.length > 0) {
         // Restore PDF binary buffers before loading project so pages can render

@@ -99,7 +99,7 @@ export function TopBar() {
       {/* Logo */}
       <div className="flex items-center gap-2 mr-3">
         <img src="/favicon.svg" alt="" className="w-5 h-5" />
-        <span className="text-sm font-bold text-brand-400 tracking-tight">ChartDeck</span>
+        <span className="text-sm font-bold text-brand-400 tracking-tight">AlignPDF</span>
       </div>
 
       {/* Separator */}
@@ -157,7 +157,7 @@ export function TopBar() {
       <input
         ref={importRef}
         type="file"
-        accept=".json,.chartdeck.json"
+        accept=".json,.alignpdf.json"
         className="hidden"
         onChange={handleImport}
       />

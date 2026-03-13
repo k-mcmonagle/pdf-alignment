@@ -46,7 +46,7 @@ export function EmptyState() {
               <FileText size={32} className="text-brand-400" />
             </div>
             <h2 className="text-xl font-semibold text-slate-200">
-              Welcome to ChartDeck
+              Welcome to AlignPDF
             </h2>
             <p className="text-sm text-slate-400 max-w-md mx-auto leading-relaxed">
               Review alignment chart PDFs side by side on an infinite canvas.

@@ -38,7 +38,7 @@ export function useAutosave(intervalMs = 5000) {
         const project = getProject();
         // Synchronous best-effort save via localStorage fallback
         try {
-          localStorage.setItem('chartdeck-emergency-save', JSON.stringify(project));
+          localStorage.setItem('alignpdf-emergency-save', JSON.stringify(project));
         } catch {
           // quota exceeded — ignore
         }

@@ -1,7 +1,7 @@
 {
-  "name": "ChartDeck",
-  "short_name": "ChartDeck",
-  "description": "Professional PDF alignment chart workspace for side-by-side document review",
+  "name": "AlignPDF",
+  "short_name": "AlignPDF",
+  "description": "Professional PDF alignment workspace for side-by-side document review",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0f172a",

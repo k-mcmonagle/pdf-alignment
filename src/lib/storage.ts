@@ -1,9 +1,9 @@
 import { get, set, del } from 'idb-keyval';
 import type { WorkspaceProject } from '../types';
 
-const AUTOSAVE_KEY = 'chartdeck-autosave';
-const PDF_BUFFERS_KEY = 'chartdeck-pdf-buffers';
-const SETTINGS_KEY = 'chartdeck-settings';
+const AUTOSAVE_KEY = 'alignpdf-autosave';
+const PDF_BUFFERS_KEY = 'alignpdf-pdf-buffers';
+const SETTINGS_KEY = 'alignpdf-settings';
 
 /** Save workspace to IndexedDB (autosave) */
 export async function autosaveWorkspace(project: WorkspaceProject): Promise<void> {
@@ -51,7 +51,7 @@ export function downloadProjectJson(project: WorkspaceProject) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${sanitizedName}.chartdeck.json`;
+  a.download = `${sanitizedName}.alignpdf.json`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -73,7 +73,7 @@ export function importProjectJson(file: File): Promise<WorkspaceProject> {
           !Array.isArray(data.documents) ||
           !Array.isArray(data.nodes)
         ) {
-          reject(new Error('Invalid ChartDeck project file'));
+          reject(new Error('Invalid AlignPDF project file'));
           return;
         }
         // Sanitize and clamp the project name from the imported file
@@ -94,7 +94,7 @@ export function importProjectJson(file: File): Promise<WorkspaceProject> {
 }
 
 /** Export canvas as PNG image */
-export function downloadImage(dataUrl: string, filename = 'chartdeck-export.png') {
+export function downloadImage(dataUrl: string, filename = 'alignpdf-export.png') {
   const a = document.createElement('a');
   a.href = dataUrl;
   a.download = filename;
@@ -125,7 +125,7 @@ export function downloadAnnotationsCsv(
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'chartdeck-annotations.csv';
+  a.download = 'alignpdf-annotations.csv';
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -213,7 +213,7 @@ export function downloadAnnotationsXlsx(
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'chartdeck-annotations.xlsx';
+  a.download = 'alignpdf-annotations.xlsx';
   a.click();
   URL.revokeObjectURL(url);
 }
