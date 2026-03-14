@@ -2,18 +2,29 @@ import { useCallback, useRef } from 'react';
 import {
   Save,
   FolderOpen,
-  Download,
   Image,
   FileDown,
   FileSpreadsheet,
-  Settings,
-  Undo2,
   Grid3x3,
   Shield,
   RotateCcw,
 } from 'lucide-react';
 import { useStore } from '../../store/useStore';
-import { downloadProjectJson, importProjectJson, downloadImage, downloadAnnotationsCsv, downloadAnnotationsXlsx } from '../../lib/storage';
+import {
+  clearPersistedWorkspace,
+  downloadAnnotationsCsv,
+  downloadAnnotationsXlsx,
+  downloadImage,
+  downloadProjectJson,
+  importProjectJson,
+} from '../../lib/storage';
+import { exportCanvasImageDataUrl } from '../../lib/canvasExport';
+import {
+  clearPdfCache,
+  clearRenderedPageCache,
+  getBuffersForDocumentIds,
+  restorePdfFromBuffer,
+} from '../../lib/pdf';
 
 export function TopBar() {
   const projectName = useStore((s) => s.projectName);
@@ -31,8 +42,27 @@ export function TopBar() {
 
   const handleSave = useCallback(() => {
     const project = getProject();
-    downloadProjectJson(project);
-  }, [getProject]);
+    const pdfBuffers = getBuffersForDocumentIds(project.documents.map((document) => document.id));
+    const missingDocuments = project.documents
+      .filter((document) => !pdfBuffers[document.id])
+      .map((document) => document.fileName);
+
+    setLoading(true, 'Saving workspace…');
+
+    try {
+      if (missingDocuments.length > 0) {
+        throw new Error(
+          `Cannot export a complete session because these PDFs are not available locally: ${missingDocuments.join(', ')}`,
+        );
+      }
+
+      downloadProjectJson(project, pdfBuffers);
+    } catch (err) {
+      alert(`Failed to save workspace: ${(err as Error).message}`);
+    } finally {
+      setLoading(false);
+    }
+  }, [getProject, setLoading]);
 
   const handleImport = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -40,8 +70,25 @@ export function TopBar() {
       if (!file) return;
       try {
         setLoading(true, 'Loading workspace…');
-        const project = await importProjectJson(file);
-        loadProject(project);
+        const imported = await importProjectJson(file);
+
+        clearPdfCache();
+        clearRenderedPageCache();
+
+        for (const [documentId, buffer] of Object.entries(imported.pdfBuffers)) {
+          await restorePdfFromBuffer(documentId, buffer);
+        }
+
+        loadProject(imported.project);
+
+        if (
+          imported.project.documents.length > 0 &&
+          Object.keys(imported.pdfBuffers).length === 0
+        ) {
+          alert(
+            'This workspace file uses the older lightweight format and does not contain embedded PDFs. Layout and annotations loaded, but page images will not render until those PDFs exist in this browser again.',
+          );
+        }
       } catch (err) {
         alert(`Failed to load workspace: ${(err as Error).message}`);
       } finally {
@@ -53,9 +100,8 @@ export function TopBar() {
   );
 
   const handleExportImage = useCallback(() => {
-    const konvaStage = document.querySelector('.konvajs-content canvas') as HTMLCanvasElement;
-    if (konvaStage) {
-      const dataUrl = konvaStage.toDataURL('image/png');
+    const dataUrl = exportCanvasImageDataUrl();
+    if (dataUrl) {
       downloadImage(dataUrl);
     }
   }, []);
@@ -88,11 +134,20 @@ export function TopBar() {
     );
   }, [annotations]);
 
-  const handleReset = useCallback(() => {
+  const handleReset = useCallback(async () => {
     if (window.confirm('Reset workspace? All unsaved changes will be lost.')) {
-      resetWorkspace();
+      setLoading(true, 'Resetting workspace…');
+
+      try {
+        resetWorkspace();
+        clearPdfCache();
+        clearRenderedPageCache();
+        await clearPersistedWorkspace();
+      } finally {
+        setLoading(false);
+      }
     }
-  }, [resetWorkspace]);
+  }, [resetWorkspace, setLoading]);
 
   return (
     <div className="h-10 bg-slate-900 border-b border-slate-700/50 flex items-center px-3 gap-2 z-20 shrink-0">
@@ -149,7 +204,7 @@ export function TopBar() {
       <div className="w-px h-5 bg-slate-700" />
 
       {/* Actions */}
-      <button onClick={handleSave} className="btn-ghost text-xs" title="Save workspace (JSON)">
+      <button onClick={handleSave} className="btn-ghost text-xs" title="Save complete session (JSON)">
         <Save size={14} />
         Save
       </button>
@@ -164,7 +219,7 @@ export function TopBar() {
       <button
         onClick={() => importRef.current?.click()}
         className="btn-ghost text-xs"
-        title="Load workspace"
+        title="Load session"
       >
         <FolderOpen size={14} />
         Load

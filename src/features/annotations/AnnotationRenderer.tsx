@@ -241,7 +241,7 @@ function AnnotationShape({ ann }: { ann: Annotation }) {
           <Rect
             width={ann.width || 200}
             height={ann.height || 120}
-            fill="#fef08a"
+            fill={ann.fill === 'transparent' ? '#fef08a' : ann.fill}
             stroke="#eab308"
             strokeWidth={1}
             shadowColor="black"

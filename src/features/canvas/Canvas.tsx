@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback, useState } from 'react';
+import { useRef, useEffect, useCallback, useMemo, useState } from 'react';
 import { Stage, Layer, Rect, Image as KonvaImage, Transformer, Group } from 'react-konva';
 import type Konva from 'konva';
 import { useStore } from '../../store/useStore';
@@ -11,6 +11,9 @@ import {
 } from '../../lib/pdf';
 import { AnnotationRenderer } from '../annotations/AnnotationRenderer';
 import { DrawingLayer } from '../annotations/DrawingLayer';
+import { CanvasScrollbars } from './CanvasScrollbars';
+import { setCanvasStage } from '../../lib/canvasExport';
+import { getCanvasContentBounds } from '../../lib/workspaceViewport';
 import { clamp, snapToGrid } from '../../lib/utils';
 
 export function Canvas() {
@@ -30,9 +33,9 @@ export function Canvas() {
   const activeTool = useStore((s) => s.activeTool);
   const selectedNodeIds = useStore((s) => s.selectedNodeIds);
   const setSelectedNodeIds = useStore((s) => s.setSelectedNodeIds);
-  const selectedAnnotationIds = useStore((s) => s.selectedAnnotationIds);
   const setSelectedAnnotationIds = useStore((s) => s.setSelectedAnnotationIds);
   const documents = useStore((s) => s.documents);
+  const contentBounds = useMemo(() => getCanvasContentBounds(nodes), [nodes]);
 
   // ─── Resize handling ───────────────────────────────────
   useEffect(() => {
@@ -49,6 +52,11 @@ export function Canvas() {
     });
     observer.observe(container);
     return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    setCanvasStage(stageRef.current);
+    return () => setCanvasStage(null);
   }, []);
 
   // ─── Render PDF pages as images ────────────────────────
@@ -222,6 +230,19 @@ export function Canvas() {
     [updateNode, settings.snapToGrid, settings.gridSize],
   );
 
+  const handleNodeTransformEnd = useCallback(
+    (nodeId: string, e: Konva.KonvaEventObject<Event>) => {
+      updateNode(nodeId, {
+        x: e.target.x(),
+        y: e.target.y(),
+        rotation: e.target.rotation(),
+        scaleX: e.target.scaleX(),
+        scaleY: e.target.scaleY(),
+      });
+    },
+    [updateNode],
+  );
+
   // ─── Grid background ──────────────────────────────────
   const gridPatternSize = settings.gridSize;
 
@@ -292,6 +313,7 @@ export function Canvas() {
                 onClick={(e) => handleNodeClick(node.id, e)}
                 onTap={(e) => handleNodeClick(node.id, e as unknown as Konva.KonvaEventObject<MouseEvent>)}
                 onDragEnd={(e) => handleNodeDragEnd(node.id, e)}
+                onTransformEnd={(e) => handleNodeTransformEnd(node.id, e)}
               >
                 {/* White page background */}
                 <Rect
@@ -373,6 +395,12 @@ export function Canvas() {
           />
         </Layer>
       </Stage>
+      <CanvasScrollbars
+        bounds={contentBounds}
+        stageSize={stageSize}
+        viewport={viewport}
+        setViewport={setViewport}
+      />
     </div>
   );
 }

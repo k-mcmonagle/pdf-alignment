@@ -24,6 +24,15 @@ export function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/** Derive a user-facing document label from the original filename */
+export function getDefaultDocumentName(fileName: string): string {
+  const trimmed = fileName.trim();
+  if (!trimmed) return 'Untitled Document';
+
+  const withoutExtension = trimmed.replace(/\.pdf$/i, '').trim();
+  return withoutExtension || trimmed;
+}
+
 /** Sanitize user-entered text to prevent XSS. Only strips HTML tags. */
 export function sanitizeText(text: string): string {
   const div = document.createElement('div');

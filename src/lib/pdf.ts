@@ -1,8 +1,10 @@
 import * as pdfjsLib from 'pdfjs-dist';
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import type { PdfDocument, PdfPageInfo } from '../types';
+import { getDefaultDocumentName } from './utils';
 
-// Configure worker - use CDN for reliable loading
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+// Bundle the worker locally so the app stays fully offline-capable after first load.
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 /** Generate a hex fingerprint from file content */
 async function hashFile(buffer: ArrayBuffer): Promise<string> {
@@ -33,6 +35,8 @@ export async function loadPdfDocument(file: File): Promise<{
   const doc: PdfDocument = {
     id: `doc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     fileName: file.name,
+    displayName: getDefaultDocumentName(file.name),
+    note: '',
     fileSize: file.size,
     pageCount: pdfDoc.numPages,
     pages,
@@ -111,6 +115,17 @@ export function getAllBuffers(): Record<string, ArrayBuffer> {
   return result;
 }
 
+export function getBuffersForDocumentIds(documentIds: string[]): Record<string, ArrayBuffer> {
+  const result: Record<string, ArrayBuffer> = {};
+  documentIds.forEach((id) => {
+    const buffer = bufferCache.get(id);
+    if (buffer) {
+      result[id] = buffer;
+    }
+  });
+  return result;
+}
+
 /** Restore a PDF document from a saved ArrayBuffer */
 export async function restorePdfFromBuffer(
   docId: string,
@@ -145,4 +160,12 @@ export function setCachedRenderedPage(key: string, img: HTMLImageElement) {
 
 export function clearRenderedPageCache() {
   renderedPageCache.clear();
+}
+
+export function removeRenderedPagesForDocument(docId: string) {
+  for (const key of renderedPageCache.keys()) {
+    if (key.startsWith(`${docId}-`)) {
+      renderedPageCache.delete(key);
+    }
+  }
 }

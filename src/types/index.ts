@@ -105,6 +105,8 @@ export interface PdfPageInfo {
 export interface PdfDocument {
   id: string;
   fileName: string;
+  displayName: string;
+  note: string;
   fileSize: number;
   pageCount: number;
   pages: PdfPageInfo[];
@@ -157,6 +159,22 @@ export interface WorkspaceProject {
   nodes: CanvasNode[];
   annotations: Annotation[];
   viewport: { x: number; y: number; zoom: number };
+  measureCalibration?: MeasureCalibration | null;
+  drawStyle?: DrawStyle;
+  lastArrangeMode?: ArrangeMode;
+}
+
+export interface WorkspaceArchive {
+  format: 'alignpdf';
+  version: number;
+  exportedAt: number;
+  project: WorkspaceProject;
+  embeddedPdfs?: Record<string, string>;
+}
+
+export interface ImportedWorkspace {
+  project: WorkspaceProject;
+  pdfBuffers: Record<string, ArrayBuffer>;
 }
 
 // ─── View State ──────────────────────────────────────────────

@@ -2,7 +2,6 @@ import { useCallback, useRef, useState } from 'react';
 import {
   FilePlus,
   Trash2,
-  LayoutGrid,
   ArrowRightFromLine,
   ArrowDownFromLine,
   Grid3x3,
@@ -12,18 +11,20 @@ import {
   FileText,
   Eye,
   GripVertical,
+  MoreHorizontal,
 } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { usePdfLoader } from '../../hooks/usePdfLoader';
-import { formatFileSize } from '../../lib/utils';
+import { formatFileSize, getDefaultDocumentName } from '../../lib/utils';
+import { getViewportForNode } from '../../lib/workspaceViewport';
 import type { ArrangeMode, PdfDocument } from '../../types';
 
 export function LeftSidebar() {
   const documents = useStore((s) => s.documents);
   const nodes = useStore((s) => s.nodes);
+  const updateDocument = useStore((s) => s.updateDocument);
   const arrangeNodes = useStore((s) => s.arrangeNodes);
   const lastArrangeMode = useStore((s) => s.lastArrangeMode);
-  const annotations = useStore((s) => s.annotations);
   const leftSidebarOpen = useStore((s) => s.leftSidebarOpen);
   const toggleLeftSidebar = useStore((s) => s.toggleLeftSidebar);
   const selectedNodeIds = useStore((s) => s.selectedNodeIds);
@@ -32,12 +33,12 @@ export function LeftSidebar() {
   const settings = useStore((s) => s.settings);
   const updateSettings = useStore((s) => s.updateSettings);
   const setViewport = useStore((s) => s.setViewport);
-  const viewport = useStore((s) => s.viewport);
   const { loadFiles, removeFile } = usePdfLoader();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [editingDocumentId, setEditingDocumentId] = useState<string | null>(null);
   const isInternalDragRef = useRef(false);
   const reorderDocuments = useStore((s) => s.reorderDocuments);
 
@@ -92,21 +93,12 @@ export function LeftSidebar() {
 
       const containerW = stageEl.clientWidth;
       const containerH = stageEl.clientHeight;
-
-      const padding = 100;
-      const scaleX = (containerW - padding * 2) / (target.width * target.scaleX);
-      const scaleY = (containerH - padding * 2) / (target.height * target.scaleY);
-      let newZoom = Math.min(scaleX, scaleY, 2);
-      newZoom = Math.max(newZoom, 0.1);
-
-      const centerX = target.x + (target.width * target.scaleX) / 2;
-      const centerY = target.y + (target.height * target.scaleY) / 2;
-
-      setViewport({
-        x: containerW / 2 - centerX * newZoom,
-        y: containerH / 2 - centerY * newZoom,
-        zoom: newZoom,
-      });
+      setViewport(
+        getViewportForNode(target, {
+          width: containerW,
+          height: containerH,
+        }),
+      );
 
       // Select all nodes for this doc
       const nodeIds = docNodes.map((n) => n.id);
@@ -174,17 +166,13 @@ export function LeftSidebar() {
             );
             const isDragging = dragIndex === index;
             const isDragOver = dragOverIndex === index;
+            const isEditing = editingDocumentId === doc.id;
+            const isRenamed =
+              doc.displayName.trim() !== getDefaultDocumentName(doc.fileName);
 
             return (
               <div
                 key={doc.id}
-                draggable
-                onDragStart={(e) => {
-                  setDragIndex(index);
-                  isInternalDragRef.current = true;
-                  e.dataTransfer.effectAllowed = 'move';
-                  e.dataTransfer.setData('text/x-reorder', String(index));
-                }}
                 onDragOver={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -225,48 +213,152 @@ export function LeftSidebar() {
                   setDragOverIndex(null);
                   isInternalDragRef.current = false;
                 }}
-                className={`group flex items-center gap-2 px-2.5 py-2 rounded-md cursor-pointer transition-colors text-sm
-                  ${isAnySelected ? 'bg-brand-600/20 border border-brand-500/30' : 'hover:bg-slate-700/50 border border-transparent'}
+                className={`group rounded-md border px-2.5 py-2 cursor-pointer transition-colors text-sm
+                  ${isAnySelected ? 'bg-brand-600/20 border-brand-500/30' : 'hover:bg-slate-700/50 border-transparent'}
                   ${isDragging ? 'opacity-40' : ''}
                   ${isDragOver ? 'border-t-2 !border-t-brand-400' : ''}`}
                 onClick={() => handleFocusDoc(doc)}
                 role="button"
                 tabIndex={0}
-                onKeyDown={(e) => e.key === 'Enter' && handleFocusDoc(doc)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && e.target === e.currentTarget) {
+                    handleFocusDoc(doc);
+                  }
+                }}
               >
-                <GripVertical size={14} className="text-slate-500 shrink-0 cursor-grab active:cursor-grabbing" />
-                <FileText size={16} className="text-brand-400 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <div className="truncate text-slate-200 text-xs font-medium">
-                    {doc.fileName}
-                  </div>
-                  <div className="text-[10px] text-slate-500">
-                    {doc.pageCount} page{doc.pageCount !== 1 ? 's' : ''} · {formatFileSize(doc.fileSize)}
-                  </div>
-                </div>
-                <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleFocusDoc(doc);
+                <div className="flex items-start gap-2">
+                  <div
+                    draggable
+                    onDragStart={(e) => {
+                      setDragIndex(index);
+                      isInternalDragRef.current = true;
+                      e.dataTransfer.effectAllowed = 'move';
+                      e.dataTransfer.setData('text/x-reorder', String(index));
                     }}
-                    className="btn-icon w-6 h-6"
-                    title="Focus"
-                    aria-label={`Focus on ${doc.fileName}`}
-                  >
-                    <Eye size={12} />
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleRemoveDoc(doc);
+                    onDragEnd={() => {
+                      setDragIndex(null);
+                      setDragOverIndex(null);
+                      isInternalDragRef.current = false;
                     }}
-                    className="btn-icon w-6 h-6 hover:text-red-400"
-                    title="Remove"
-                    aria-label={`Remove ${doc.fileName}`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="mt-1 flex h-6 w-4 shrink-0 items-center justify-center text-slate-500 cursor-grab active:cursor-grabbing"
+                    title="Drag to reorder"
+                    aria-label={`Drag to reorder ${doc.displayName}`}
                   >
-                    <Trash2 size={12} />
-                  </button>
+                    <GripVertical size={14} />
+                  </div>
+                  <FileText size={16} className="text-brand-400 shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-xs font-medium text-slate-200">
+                          {doc.displayName}
+                        </div>
+                        <div className="text-[10px] text-slate-500">
+                          {doc.pageCount} page{doc.pageCount !== 1 ? 's' : ''} · {formatFileSize(doc.fileSize)}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-0.5">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleFocusDoc(doc);
+                          }}
+                          className="btn-icon h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+                          title="Focus"
+                          aria-label={`Focus on ${doc.displayName}`}
+                        >
+                          <Eye size={12} />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingDocumentId((current) =>
+                              current === doc.id ? null : doc.id,
+                            );
+                          }}
+                          className={`btn-icon h-6 w-6 ${
+                            isEditing ? 'text-brand-400' : ''
+                          }`}
+                          title="Document options"
+                          aria-label={`Open options for ${doc.displayName}`}
+                        >
+                          <MoreHorizontal size={12} />
+                        </button>
+                      </div>
+                    </div>
+                    {doc.note.trim() && (
+                      <div
+                        className="mt-1 truncate text-[10px] text-slate-400"
+                        title={doc.note}
+                      >
+                        {doc.note}
+                      </div>
+                    )}
+                    {isEditing && (
+                      <div
+                        className="mt-2 space-y-2 rounded-md border border-slate-700/60 bg-slate-900/45 p-2"
+                        onClick={(e) => e.stopPropagation()}
+                        onMouseDown={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          type="text"
+                          value={doc.displayName}
+                          maxLength={120}
+                          className="input-field h-7 text-xs font-medium"
+                          placeholder="Document name"
+                          onChange={(e) =>
+                            updateDocument(doc.id, {
+                              displayName: e.target.value.slice(0, 120),
+                            })
+                          }
+                          onKeyDown={(e) => e.stopPropagation()}
+                          onBlur={(e) => {
+                            if (!e.target.value.trim()) {
+                              updateDocument(doc.id, {
+                                displayName: getDefaultDocumentName(doc.fileName),
+                              });
+                            }
+                          }}
+                        />
+                        {isRenamed && (
+                          <div className="truncate text-[10px] text-slate-500" title={doc.fileName}>
+                            Source: {doc.fileName}
+                          </div>
+                        )}
+                        <textarea
+                          className="input-field min-h-[60px] resize-y text-[11px]"
+                          rows={3}
+                          maxLength={1000}
+                          placeholder="Document note…"
+                          value={doc.note}
+                          onChange={(e) =>
+                            updateDocument(doc.id, {
+                              note: e.target.value.slice(0, 1000),
+                            })
+                          }
+                          onKeyDown={(e) => e.stopPropagation()}
+                        />
+                        <div className="flex items-center justify-between gap-2">
+                          <button
+                            onClick={() => setEditingDocumentId(null)}
+                            className="btn-secondary px-2.5 py-1 text-[11px]"
+                            type="button"
+                          >
+                            Done
+                          </button>
+                          <button
+                            onClick={() => handleRemoveDoc(doc)}
+                            className="btn-secondary px-2.5 py-1 text-[11px] hover:text-red-400"
+                            type="button"
+                          >
+                            <Trash2 size={11} />
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             );

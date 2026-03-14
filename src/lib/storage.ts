@@ -1,9 +1,435 @@
 import { get, set, del } from 'idb-keyval';
-import type { WorkspaceProject } from '../types';
+import type {
+  Annotation,
+  ArrangeMode,
+  DrawStyle,
+  ImportedWorkspace,
+  MeasureCalibration,
+  WorkspaceArchive,
+  WorkspaceProject,
+  WorkspaceSettings,
+} from '../types';
+import {
+  DEFAULT_DRAW_STYLE,
+  DEFAULT_SETTINGS,
+  DEFAULT_VIEWPORT,
+} from '../types';
+import { getDefaultDocumentName } from './utils';
 
 const AUTOSAVE_KEY = 'alignpdf-autosave';
 const PDF_BUFFERS_KEY = 'alignpdf-pdf-buffers';
 const SETTINGS_KEY = 'alignpdf-settings';
+const PROJECT_NAME_MAX_LENGTH = 100;
+const WORKSPACE_ARCHIVE_FORMAT = 'alignpdf';
+const WORKSPACE_ARCHIVE_VERSION = 1;
+const WORKSPACE_PROJECT_VERSION = 2;
+const MAX_IMPORT_JSON_SIZE = 350 * 1024 * 1024; // 350 MB
+const MAX_EMBEDDED_PDF_BYTES = 250 * 1024 * 1024; // 250 MB raw PDF data
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function clampNumber(value: unknown, fallback: number, min = -Infinity, max = Infinity): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.min(Math.max(value, min), max);
+}
+
+function sanitizeProjectName(name: unknown): string {
+  if (typeof name !== 'string') {
+    return 'Imported Workspace';
+  }
+  const trimmed = name.replace(/\s+/g, ' ').trim();
+  return trimmed.slice(0, PROJECT_NAME_MAX_LENGTH) || 'Imported Workspace';
+}
+
+function normalizeSettings(settings: unknown): WorkspaceSettings {
+  const source = isRecord(settings) ? settings : {};
+  return {
+    showGrid: typeof source.showGrid === 'boolean' ? source.showGrid : DEFAULT_SETTINGS.showGrid,
+    snapToGrid:
+      typeof source.snapToGrid === 'boolean' ? source.snapToGrid : DEFAULT_SETTINGS.snapToGrid,
+    gridSize: clampNumber(source.gridSize, DEFAULT_SETTINGS.gridSize, 5, 500),
+    renderScale: clampNumber(source.renderScale, DEFAULT_SETTINGS.renderScale, 0.5, 3),
+    backgroundColor:
+      typeof source.backgroundColor === 'string' && source.backgroundColor.trim()
+        ? source.backgroundColor
+        : DEFAULT_SETTINGS.backgroundColor,
+    arrangeGap: clampNumber(source.arrangeGap, DEFAULT_SETTINGS.arrangeGap, 0, 500),
+  };
+}
+
+function normalizeViewport(viewport: unknown) {
+  const source = isRecord(viewport) ? viewport : {};
+  return {
+    x: clampNumber(source.x, DEFAULT_VIEWPORT.x, -10_000_000, 10_000_000),
+    y: clampNumber(source.y, DEFAULT_VIEWPORT.y, -10_000_000, 10_000_000),
+    zoom: clampNumber(source.zoom, DEFAULT_VIEWPORT.zoom, 0.02, 10),
+  };
+}
+
+function normalizeDrawStyle(drawStyle: unknown): DrawStyle {
+  const source = isRecord(drawStyle) ? drawStyle : {};
+  const dash =
+    source.dash === 'solid' || source.dash === 'dashed' || source.dash === 'dotted'
+      ? source.dash
+      : DEFAULT_DRAW_STYLE.dash;
+
+  return {
+    stroke:
+      typeof source.stroke === 'string' && source.stroke.trim()
+        ? source.stroke
+        : DEFAULT_DRAW_STYLE.stroke,
+    strokeWidth: clampNumber(source.strokeWidth, DEFAULT_DRAW_STYLE.strokeWidth, 1, 24),
+    fill:
+      typeof source.fill === 'string' && source.fill.trim()
+        ? source.fill
+        : DEFAULT_DRAW_STYLE.fill,
+    opacity: clampNumber(source.opacity, DEFAULT_DRAW_STYLE.opacity, 0.05, 1),
+    fontSize: clampNumber(source.fontSize, DEFAULT_DRAW_STYLE.fontSize, 8, 72),
+    dash,
+  };
+}
+
+function normalizeArrangeMode(value: unknown): ArrangeMode {
+  return value === 'horizontal' || value === 'vertical' || value === 'grid'
+    ? value
+    : 'horizontal';
+}
+
+function normalizeMeasureCalibration(value: unknown): MeasureCalibration | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const unit = typeof value.unit === 'string' && value.unit.trim() ? value.unit : 'm';
+  const pixelLength = clampNumber(value.pixelLength, 0, 0.001);
+  const realValue = clampNumber(value.realValue, 0, 0.001);
+
+  if (pixelLength <= 0 || realValue <= 0) {
+    return null;
+  }
+
+  return { pixelLength, realValue, unit };
+}
+
+function normalizeDocuments(value: unknown): WorkspaceProject['documents'] {
+  if (!Array.isArray(value)) {
+    throw new Error('Invalid workspace file: documents are missing.');
+  }
+
+  return value.map((entry, index) => {
+    if (!isRecord(entry)) {
+      throw new Error(`Invalid workspace file: document ${index + 1} is malformed.`);
+    }
+
+    const id = typeof entry.id === 'string' && entry.id.trim() ? entry.id : '';
+    if (!id) {
+      throw new Error(`Invalid workspace file: document ${index + 1} is missing an id.`);
+    }
+
+    if (!Array.isArray(entry.pages)) {
+      throw new Error(`Invalid workspace file: document "${id}" has no pages.`);
+    }
+
+    return {
+      id,
+      fileName:
+        typeof entry.fileName === 'string' && entry.fileName.trim()
+          ? entry.fileName.slice(0, 255)
+          : `Document ${index + 1}.pdf`,
+      displayName:
+        typeof entry.displayName === 'string' && entry.displayName.trim()
+          ? entry.displayName.slice(0, 120)
+          : getDefaultDocumentName(
+              typeof entry.fileName === 'string' && entry.fileName.trim()
+                ? entry.fileName
+                : `Document ${index + 1}.pdf`,
+            ),
+      note: typeof entry.note === 'string' ? entry.note.slice(0, 1000) : '',
+      fileSize: clampNumber(entry.fileSize, 0, 0),
+      pageCount: clampNumber(entry.pageCount, entry.pages.length, 0),
+      fingerprint:
+        typeof entry.fingerprint === 'string' && entry.fingerprint.trim()
+          ? entry.fingerprint
+          : id,
+      pages: entry.pages.map((page, pageIndex) => {
+        if (!isRecord(page)) {
+          throw new Error(
+            `Invalid workspace file: page ${pageIndex + 1} in "${id}" is malformed.`,
+          );
+        }
+
+        return {
+          pageNumber: clampNumber(page.pageNumber, pageIndex + 1, 1),
+          width: clampNumber(page.width, 1, 1),
+          height: clampNumber(page.height, 1, 1),
+        };
+      }),
+    };
+  });
+}
+
+function normalizeNodes(
+  value: unknown,
+  documentIds: Set<string>,
+): WorkspaceProject['nodes'] {
+  if (!Array.isArray(value)) {
+    throw new Error('Invalid workspace file: nodes are missing.');
+  }
+
+  return value
+    .map((entry) => {
+      if (!isRecord(entry)) {
+        return null;
+      }
+
+      const id = typeof entry.id === 'string' && entry.id.trim() ? entry.id : '';
+      const documentId =
+        typeof entry.documentId === 'string' && documentIds.has(entry.documentId)
+          ? entry.documentId
+          : '';
+
+      if (!id || !documentId) {
+        return null;
+      }
+
+      return {
+        id,
+        documentId,
+        pageNumber: clampNumber(entry.pageNumber, 1, 1),
+        x: clampNumber(entry.x, 0, -10_000_000, 10_000_000),
+        y: clampNumber(entry.y, 0, -10_000_000, 10_000_000),
+        width: clampNumber(entry.width, 1, 1),
+        height: clampNumber(entry.height, 1, 1),
+        rotation: clampNumber(entry.rotation, 0, -360_000, 360_000),
+        scaleX: clampNumber(entry.scaleX, 1, 0.01, 100),
+        scaleY: clampNumber(entry.scaleY, 1, 0.01, 100),
+        locked: typeof entry.locked === 'boolean' ? entry.locked : true,
+        visible: typeof entry.visible === 'boolean' ? entry.visible : true,
+      };
+    })
+    .filter((entry): entry is WorkspaceProject['nodes'][number] => entry !== null);
+}
+
+function normalizeAnnotationBase(entry: Record<string, unknown>) {
+  const dash =
+    entry.dash === 'solid' || entry.dash === 'dashed' || entry.dash === 'dotted'
+      ? entry.dash
+      : 'solid';
+
+  return {
+    id: typeof entry.id === 'string' && entry.id.trim() ? entry.id : '',
+    x: clampNumber(entry.x, 0, -10_000_000, 10_000_000),
+    y: clampNumber(entry.y, 0, -10_000_000, 10_000_000),
+    rotation: clampNumber(entry.rotation, 0, -360_000, 360_000),
+    scaleX: clampNumber(entry.scaleX, 1, 0.01, 100),
+    scaleY: clampNumber(entry.scaleY, 1, 0.01, 100),
+    stroke:
+      typeof entry.stroke === 'string' && entry.stroke.trim() ? entry.stroke : '#ef4444',
+    strokeWidth: clampNumber(entry.strokeWidth, 3, 1, 24),
+    opacity: clampNumber(entry.opacity, 1, 0.05, 1),
+    fill: typeof entry.fill === 'string' && entry.fill.trim() ? entry.fill : 'transparent',
+    dash,
+    locked: typeof entry.locked === 'boolean' ? entry.locked : false,
+    note: typeof entry.note === 'string' ? entry.note.slice(0, 2000) : '',
+    createdAt: clampNumber(entry.createdAt, Date.now(), 0),
+  };
+}
+
+function normalizeAnnotations(value: unknown): Annotation[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry) => {
+      if (!isRecord(entry)) {
+        return null;
+      }
+
+      const type = entry.type;
+      const base = normalizeAnnotationBase(entry);
+      if (!base.id || typeof type !== 'string') {
+        return null;
+      }
+
+      switch (type) {
+        case 'rect':
+          return {
+            ...base,
+            type,
+            width: clampNumber(entry.width, 20, 1),
+            height: clampNumber(entry.height, 20, 1),
+            cornerRadius: clampNumber(entry.cornerRadius, 0, 0, 200),
+          } as Annotation;
+        case 'ellipse':
+          return {
+            ...base,
+            type,
+            radiusX: clampNumber(entry.radiusX, 10, 1),
+            radiusY: clampNumber(entry.radiusY, 10, 1),
+          } as Annotation;
+        case 'arrow':
+        case 'line':
+        case 'pen':
+          return {
+            ...base,
+            type,
+            points: Array.isArray(entry.points)
+              ? entry.points
+                  .map((point) => clampNumber(point, 0, -10_000_000, 10_000_000))
+                  .filter((point) => Number.isFinite(point))
+              : [],
+          } as Annotation;
+        case 'text':
+          return {
+            ...base,
+            type,
+            text: typeof entry.text === 'string' ? entry.text.slice(0, 2000) : '',
+            fontSize: clampNumber(entry.fontSize, 16, 8, 72),
+            width: clampNumber(entry.width, 200, 20),
+            height: clampNumber(entry.height, 120, 20),
+          } as Annotation;
+        case 'highlight':
+          return {
+            ...base,
+            type,
+            width: clampNumber(entry.width, 20, 1),
+            height: clampNumber(entry.height, 20, 1),
+          } as Annotation;
+        case 'measure':
+          return {
+            ...base,
+            type,
+            points: Array.isArray(entry.points)
+              ? entry.points
+                  .map((point) => clampNumber(point, 0, -10_000_000, 10_000_000))
+                  .filter((point) => Number.isFinite(point))
+              : [],
+            pixelLength: clampNumber(entry.pixelLength, 0, 0),
+            realLength: typeof entry.realLength === 'string' ? entry.realLength.slice(0, 100) : '',
+          } as Annotation;
+        default:
+          return null;
+      }
+    })
+    .filter((entry): entry is Annotation => entry !== null);
+}
+
+export function normalizeWorkspaceProject(data: unknown): WorkspaceProject {
+  if (!isRecord(data)) {
+    throw new Error('Invalid workspace file.');
+  }
+
+  const documents = normalizeDocuments(data.documents);
+  const documentIds = new Set(documents.map((document) => document.id));
+
+  return {
+    version: WORKSPACE_PROJECT_VERSION,
+    name: sanitizeProjectName(data.name),
+    createdAt: clampNumber(data.createdAt, Date.now(), 0),
+    updatedAt: clampNumber(data.updatedAt, Date.now(), 0),
+    settings: normalizeSettings(data.settings),
+    documents,
+    nodes: normalizeNodes(data.nodes, documentIds),
+    annotations: normalizeAnnotations(data.annotations),
+    viewport: normalizeViewport(data.viewport),
+    measureCalibration: normalizeMeasureCalibration(data.measureCalibration),
+    drawStyle: normalizeDrawStyle(data.drawStyle),
+    lastArrangeMode: normalizeArrangeMode(data.lastArrangeMode),
+  };
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  let binary = '';
+
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    const chunk = bytes.subarray(index, index + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+
+  return btoa(binary);
+}
+
+function base64ToArrayBuffer(base64: string): ArrayBuffer {
+  const normalized = base64.trim();
+  const binary = atob(normalized);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return bytes.buffer;
+}
+
+function estimateBase64Bytes(base64: string): number {
+  const normalized = base64.trim();
+  const padding = normalized.endsWith('==') ? 2 : normalized.endsWith('=') ? 1 : 0;
+  return Math.floor((normalized.length * 3) / 4) - padding;
+}
+
+function buildWorkspaceArchive(
+  project: WorkspaceProject,
+  pdfBuffers: Record<string, ArrayBuffer>,
+): WorkspaceArchive {
+  const embeddedPdfs = Object.entries(pdfBuffers).reduce<Record<string, string>>(
+    (result, [documentId, buffer]) => {
+      result[documentId] = arrayBufferToBase64(buffer);
+      return result;
+    },
+    {},
+  );
+
+  return {
+    format: WORKSPACE_ARCHIVE_FORMAT,
+    version: WORKSPACE_ARCHIVE_VERSION,
+    exportedAt: Date.now(),
+    project: {
+      ...project,
+      version: WORKSPACE_PROJECT_VERSION,
+      updatedAt: Date.now(),
+    },
+    embeddedPdfs,
+  };
+}
+
+function unpackWorkspaceArchive(data: unknown): ImportedWorkspace {
+  if (!isRecord(data)) {
+    throw new Error('Invalid workspace file.');
+  }
+
+  const archive = data.format === WORKSPACE_ARCHIVE_FORMAT && isRecord(data.project)
+    ? data
+    : null;
+  const project = normalizeWorkspaceProject(archive ? archive.project : data);
+  const embeddedPdfs = archive && isRecord(archive.embeddedPdfs) ? archive.embeddedPdfs : {};
+  const expectedDocumentIds = new Set(project.documents.map((document) => document.id));
+  const pdfBuffers: Record<string, ArrayBuffer> = {};
+  let totalPdfBytes = 0;
+
+  Object.entries(embeddedPdfs).forEach(([documentId, encoded]) => {
+    if (!expectedDocumentIds.has(documentId) || typeof encoded !== 'string' || !encoded.trim()) {
+      return;
+    }
+
+    totalPdfBytes += estimateBase64Bytes(encoded);
+    if (totalPdfBytes > MAX_EMBEDDED_PDF_BYTES) {
+      throw new Error(
+        'Workspace file is too large to import safely. Split the session into smaller groups of PDFs.',
+      );
+    }
+
+    pdfBuffers[documentId] = base64ToArrayBuffer(encoded);
+  });
+
+  return { project, pdfBuffers };
+}
 
 /** Save workspace to IndexedDB (autosave) */
 export async function autosaveWorkspace(project: WorkspaceProject): Promise<void> {
@@ -15,6 +441,11 @@ export async function savePdfBuffers(buffers: Record<string, ArrayBuffer>): Prom
   await set(PDF_BUFFERS_KEY, buffers);
 }
 
+/** Clear stored PDF binary buffers */
+export async function clearPdfBuffers(): Promise<void> {
+  await del(PDF_BUFFERS_KEY);
+}
+
 /** Load saved PDF binary buffers from IndexedDB */
 export async function loadPdfBuffers(): Promise<Record<string, ArrayBuffer> | null> {
   const data = await get<Record<string, ArrayBuffer>>(PDF_BUFFERS_KEY);
@@ -23,13 +454,27 @@ export async function loadPdfBuffers(): Promise<Record<string, ArrayBuffer> | nu
 
 /** Load autosaved workspace from IndexedDB */
 export async function loadAutosave(): Promise<WorkspaceProject | null> {
-  const data = await get<WorkspaceProject>(AUTOSAVE_KEY);
-  return data ?? null;
+  const data = await get<unknown>(AUTOSAVE_KEY);
+  if (!data) {
+    return null;
+  }
+  try {
+    return normalizeWorkspaceProject(data);
+  } catch {
+    await Promise.all([clearAutosave(), clearPdfBuffers()]);
+    return null;
+  }
 }
 
 /** Clear autosave */
 export async function clearAutosave(): Promise<void> {
   await del(AUTOSAVE_KEY);
+}
+
+/** Clear all persisted workspace state */
+export async function clearPersistedWorkspace(): Promise<void> {
+  await Promise.all([clearAutosave(), clearPdfBuffers()]);
+  localStorage.removeItem('alignpdf-emergency-save');
 }
 
 /** Save app settings */
@@ -44,9 +489,20 @@ export async function loadAppSettings(): Promise<Record<string, unknown> | null>
 }
 
 /** Export project as downloadable JSON */
-export function downloadProjectJson(project: WorkspaceProject) {
+export function downloadProjectJson(
+  project: WorkspaceProject,
+  pdfBuffers: Record<string, ArrayBuffer>,
+) {
+  const totalPdfBytes = Object.values(pdfBuffers).reduce((total, buffer) => total + buffer.byteLength, 0);
+  if (totalPdfBytes > MAX_EMBEDDED_PDF_BYTES) {
+    throw new Error(
+      'This session is too large to export as one self-contained file. Split it into smaller sets of PDFs first.',
+    );
+  }
+
   const sanitizedName = project.name.replace(/[^a-zA-Z0-9-_ ]/g, '').trim() || 'workspace';
-  const json = JSON.stringify(project, null, 2);
+  const archive = buildWorkspaceArchive(project, pdfBuffers);
+  const json = JSON.stringify(archive, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -56,35 +512,22 @@ export function downloadProjectJson(project: WorkspaceProject) {
   URL.revokeObjectURL(url);
 }
 
-const MAX_IMPORT_JSON_SIZE = 50 * 1024 * 1024; // 50 MB
-
 /** Import project from a JSON file */
-export function importProjectJson(file: File): Promise<WorkspaceProject> {
+export function importProjectJson(file: File): Promise<ImportedWorkspace> {
   if (file.size > MAX_IMPORT_JSON_SIZE) {
-    return Promise.reject(new Error('Project file exceeds the 50 MB size limit'));
+    return Promise.reject(new Error('Project file exceeds the 350 MB size limit'));
   }
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
         const data = JSON.parse(e.target?.result as string);
-        if (
-          typeof data.version !== 'string' ||
-          !Array.isArray(data.documents) ||
-          !Array.isArray(data.nodes)
-        ) {
-          reject(new Error('Invalid AlignPDF project file'));
+        resolve(unpackWorkspaceArchive(data));
+      } catch (error) {
+        if (error instanceof Error) {
+          reject(error);
           return;
         }
-        // Sanitize and clamp the project name from the imported file
-        data.name =
-          typeof data.name === 'string' ? data.name.slice(0, 100) : 'Imported Project';
-        // Ensure annotations is always an array
-        if (!Array.isArray(data.annotations)) {
-          data.annotations = [];
-        }
-        resolve(data as WorkspaceProject);
-      } catch {
         reject(new Error('Failed to parse project file'));
       }
     };

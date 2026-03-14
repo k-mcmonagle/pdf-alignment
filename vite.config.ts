@@ -10,17 +10,7 @@ export default defineConfig({
       includeAssets: ['favicon.svg'],
       manifest: false, // We provide our own manifest.json
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/cdnjs\.cloudflare\.com\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'cdn-cache',
-              expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 30 },
-            },
-          },
-        ],
+        globPatterns: ['**/*.{js,mjs,css,html,svg,png,woff2}'],
       },
     }),
   ],

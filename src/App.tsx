@@ -12,7 +12,7 @@ import { CalibrationDialog } from './components/ui/CalibrationDialog';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useAutosave } from './hooks/useAutosave';
 import { useStore } from './store/useStore';
-import { loadAutosave, loadPdfBuffers } from './lib/storage';
+import { loadAutosave, loadPdfBuffers, normalizeWorkspaceProject } from './lib/storage';
 import { restorePdfFromBuffer } from './lib/pdf';
 
 export default function App() {
@@ -36,7 +36,7 @@ export default function App() {
         try {
           const raw = localStorage.getItem('alignpdf-emergency-save');
           if (raw) {
-            const parsed = JSON.parse(raw);
+            const parsed = normalizeWorkspaceProject(JSON.parse(raw));
             if (parsed?.documents?.length > 0) {
               project = parsed;
             }

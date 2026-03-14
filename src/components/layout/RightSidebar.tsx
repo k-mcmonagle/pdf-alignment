@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   ChevronRight,
   ChevronDown,
@@ -20,7 +20,6 @@ import {
   ArrowDown,
   ChevronsUp,
   ChevronsDown,
-  Settings2,
   Palette,
 } from 'lucide-react';
 import { useStore } from '../../store/useStore';
@@ -72,13 +71,7 @@ export function RightSidebar() {
   const setDrawStyle = useStore((s) => s.setDrawStyle);
 
   const [drawStyleOpen, setDrawStyleOpen] = useState(false);
-  const [propsOpen, setPropsOpen] = useState(false);
-
-  // The single selected annotation (for property editing)
-  const selectedAnn: Annotation | null = useMemo(() => {
-    if (selectedAnnotationIds.length !== 1) return null;
-    return annotations.find((a) => a.id === selectedAnnotationIds[0]) ?? null;
-  }, [selectedAnnotationIds, annotations]);
+  const [expandedAnnotationId, setExpandedAnnotationId] = useState<string | null>(null);
 
   const handleSelectAnnotation = useCallback(
     (id: string) => {
@@ -100,6 +93,7 @@ export function RightSidebar() {
   const handleDelete = useCallback(
     (id: string) => {
       removeAnnotation(id);
+      setExpandedAnnotationId((current) => (current === id ? null : current));
       setSelectedAnnotationIds(selectedAnnotationIds.filter((a) => a !== id));
     },
     [removeAnnotation, setSelectedAnnotationIds, selectedAnnotationIds],
@@ -118,6 +112,20 @@ export function RightSidebar() {
     },
     [updateAnnotation],
   );
+
+  const handleToggleAnnotationProps = useCallback(
+    (id: string) => {
+      setSelectedAnnotationIds([id]);
+      setExpandedAnnotationId((current) => (current === id ? null : id));
+    },
+    [setSelectedAnnotationIds],
+  );
+
+  const activeExpandedAnnotationId = annotations.some(
+    (annotation) => annotation.id === expandedAnnotationId,
+  )
+    ? expandedAnnotationId
+    : null;
 
   if (!rightSidebarOpen) {
     return (
@@ -243,176 +251,6 @@ export function RightSidebar() {
         </div>}
       </div>
 
-      {/* Selected annotation property editing — collapsible */}
-      {selectedAnn && (
-        <div className="sidebar-section">
-          <button
-            onClick={() => setPropsOpen(!propsOpen)}
-            className="flex items-center gap-2 w-full text-left group"
-          >
-            {propsOpen ? <ChevronDown size={12} className="text-slate-500" /> : <ChevronRight size={12} className="text-slate-500" />}
-            <span className="text-brand-400">{typeIcons[selectedAnn.type]}</span>
-            <span className="panel-heading px-0 pt-0 pb-0 flex-1">{typeLabels[selectedAnn.type]} Properties</span>
-            <Settings2 size={12} className="text-slate-500" />
-          </button>
-
-          {/* Quick actions row — always visible */}
-          <div className="flex items-center gap-1 mt-1.5">
-            <button onClick={() => bringToFront(selectedAnn.id)} className="btn-icon w-6 h-6 text-slate-400" title="Bring to front"><ChevronsUp size={12} /></button>
-            <button onClick={() => bringForward(selectedAnn.id)} className="btn-icon w-6 h-6 text-slate-400" title="Bring forward"><ArrowUp size={12} /></button>
-            <button onClick={() => sendBackward(selectedAnn.id)} className="btn-icon w-6 h-6 text-slate-400" title="Send backward"><ArrowDown size={12} /></button>
-            <button onClick={() => sendToBack(selectedAnn.id)} className="btn-icon w-6 h-6 text-slate-400" title="Send to back"><ChevronsDown size={12} /></button>
-            <div className="flex-1" />
-            <button onClick={() => duplicateAnnotation(selectedAnn.id)} className="btn-icon w-6 h-6 text-slate-400" title="Duplicate (Ctrl+D)"><Copy size={12} /></button>
-            <button onClick={() => handleDelete(selectedAnn.id)} className="btn-icon w-6 h-6 hover:text-red-400" title="Delete"><Trash2 size={12} /></button>
-          </div>
-
-          {propsOpen && <div className="space-y-2 mt-2">
-
-          {/* Stroke color & width */}
-          {selectedAnn.type !== 'highlight' && selectedAnn.type !== 'text' && (
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-slate-400 w-14">Stroke</label>
-              <input
-                type="color"
-                value={selectedAnn.stroke}
-                onChange={(e) => updateAnnotation(selectedAnn.id, { stroke: e.target.value })}
-                className="w-8 h-6 rounded border border-slate-600 cursor-pointer bg-transparent"
-              />
-              <input
-                type="range"
-                min="1"
-                max="12"
-                value={selectedAnn.strokeWidth}
-                onChange={(e) => updateAnnotation(selectedAnn.id, { strokeWidth: Number(e.target.value) })}
-                className="flex-1 accent-brand-500"
-              />
-              <span className="text-xs text-slate-500 w-5">{selectedAnn.strokeWidth}</span>
-            </div>
-          )}
-
-          {/* Fill color (for rects and ellipses) */}
-          {fillableTypes.includes(selectedAnn.type) && (
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-slate-400 w-14">Fill</label>
-              <input
-                type="color"
-                value={selectedAnn.fill === 'transparent' ? '#000000' : selectedAnn.fill}
-                onChange={(e) => updateAnnotation(selectedAnn.id, { fill: e.target.value })}
-                className="w-8 h-6 rounded border border-slate-600 cursor-pointer bg-transparent"
-              />
-              <button
-                onClick={() => updateAnnotation(selectedAnn.id, { fill: 'transparent' })}
-                className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
-                  selectedAnn.fill === 'transparent'
-                    ? 'border-brand-500 text-brand-400 bg-brand-500/10'
-                    : 'border-slate-600 text-slate-500 hover:text-slate-300'
-                }`}
-              >
-                None
-              </button>
-            </div>
-          )}
-
-          {/* Opacity */}
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-slate-400 w-14">Opacity</label>
-            <input
-              type="range"
-              min="0.05"
-              max="1"
-              step="0.05"
-              value={selectedAnn.opacity}
-              onChange={(e) => updateAnnotation(selectedAnn.id, { opacity: Number(e.target.value) })}
-              className="flex-1 accent-brand-500"
-            />
-            <span className="text-xs text-slate-500 w-8">
-              {Math.round(selectedAnn.opacity * 100)}%
-            </span>
-          </div>
-
-          {/* Dash style */}
-          {dashableTypes.includes(selectedAnn.type) && (
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-slate-400 w-14">Line</label>
-              <div className="flex gap-1">
-                {(['solid', 'dashed', 'dotted'] as DashStyle[]).map((d) => (
-                  <button
-                    key={d}
-                    onClick={() => updateAnnotation(selectedAnn.id, { dash: d })}
-                    className={`px-2 py-0.5 text-[10px] rounded border transition-colors ${
-                      (selectedAnn.dash ?? 'solid') === d
-                        ? 'border-brand-500 text-brand-400 bg-brand-500/10'
-                        : 'border-slate-600 text-slate-500 hover:text-slate-300'
-                    }`}
-                  >
-                    {d === 'solid' ? '———' : d === 'dashed' ? '– – –' : '· · · ·'}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Corner radius (for rects) */}
-          {cornerRadiusTypes.includes(selectedAnn.type) && (
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-slate-400 w-14">Radius</label>
-              <input
-                type="range"
-                min="0"
-                max="50"
-                value={(selectedAnn as { cornerRadius?: number }).cornerRadius ?? 0}
-                onChange={(e) =>
-                  updateAnnotation(selectedAnn.id, { cornerRadius: Number(e.target.value) } as Partial<Annotation>)
-                }
-                className="flex-1 accent-brand-500"
-              />
-              <span className="text-xs text-slate-500 w-5">
-                {(selectedAnn as { cornerRadius?: number }).cornerRadius ?? 0}
-              </span>
-            </div>
-          )}
-
-          {/* Font size (for text) */}
-          {selectedAnn.type === 'text' && (
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-slate-400 w-14">Font</label>
-              <input
-                type="range"
-                min="8"
-                max="48"
-                value={(selectedAnn as { fontSize: number }).fontSize}
-                onChange={(e) =>
-                  updateAnnotation(selectedAnn.id, { fontSize: Number(e.target.value) } as Partial<Annotation>)
-                }
-                className="flex-1 accent-brand-500"
-              />
-              <span className="text-xs text-slate-500 w-5">
-                {(selectedAnn as { fontSize: number }).fontSize}
-              </span>
-            </div>
-          )}
-
-          {/* Rotation */}
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-slate-400 w-14">Rotate</label>
-            <input
-              type="range"
-              min="0"
-              max="360"
-              value={Math.round(selectedAnn.rotation)}
-              onChange={(e) => updateAnnotation(selectedAnn.id, { rotation: Number(e.target.value) })}
-              className="flex-1 accent-brand-500"
-            />
-            <span className="text-xs text-slate-500 w-8">
-              {Math.round(selectedAnn.rotation)}°
-            </span>
-          </div>
-
-          </div>}
-        </div>
-      )}
-
       {/* Annotations list */}
       <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
         {annotations.length === 0 ? (
@@ -425,8 +263,16 @@ export function RightSidebar() {
             </p>
           </div>
         ) : (
-          annotations.map((ann) => {
+          <>
+            {annotations.map((ann) => {
             const isSelected = selectedAnnotationIds.includes(ann.id);
+            const isExpanded = activeExpandedAnnotationId === ann.id;
+            const swatchColor =
+              ann.type === 'text'
+                ? ann.fill === 'transparent'
+                  ? '#fef08a'
+                  : ann.fill
+                : ann.stroke;
             return (
               <div
                 key={ann.id}
@@ -443,10 +289,20 @@ export function RightSidebar() {
                   <span className="flex-1 text-slate-300 font-medium">
                     {typeLabels[ann.type]}
                   </span>
-                  <span
-                    className="w-3 h-3 rounded-full border border-slate-600 shrink-0"
-                    style={{ backgroundColor: ann.stroke }}
-                    title={`Color: ${ann.stroke}`}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleToggleAnnotationProps(ann.id);
+                    }}
+                    className={`h-5 w-5 rounded-full border-2 shrink-0 transition-all ${
+                      isExpanded
+                        ? 'border-brand-400 ring-2 ring-brand-500/25'
+                        : 'border-slate-600 hover:border-slate-400'
+                    }`}
+                    style={{ backgroundColor: swatchColor }}
+                    title={`Edit ${typeLabels[ann.type]} style`}
+                    aria-label={`Edit ${typeLabels[ann.type]} style`}
                   />
                   <button
                     onClick={(e) => {
@@ -471,6 +327,189 @@ export function RightSidebar() {
                     <Trash2 size={10} />
                   </button>
                 </div>
+
+                {isExpanded && (
+                  <div
+                    className="mx-2.5 mb-2 space-y-2 rounded-md border border-slate-700/60 bg-slate-900/45 p-2"
+                    onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                  >
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => bringToFront(ann.id)} className="btn-icon h-6 w-6 text-slate-400" title="Bring to front"><ChevronsUp size={12} /></button>
+                      <button onClick={() => bringForward(ann.id)} className="btn-icon h-6 w-6 text-slate-400" title="Bring forward"><ArrowUp size={12} /></button>
+                      <button onClick={() => sendBackward(ann.id)} className="btn-icon h-6 w-6 text-slate-400" title="Send backward"><ArrowDown size={12} /></button>
+                      <button onClick={() => sendToBack(ann.id)} className="btn-icon h-6 w-6 text-slate-400" title="Send to back"><ChevronsDown size={12} /></button>
+                      <div className="flex-1" />
+                      <button onClick={() => duplicateAnnotation(ann.id)} className="btn-icon h-6 w-6 text-slate-400" title="Duplicate (Ctrl+D)"><Copy size={12} /></button>
+                    </div>
+
+                    {ann.type !== 'text' && ann.type !== 'highlight' && (
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-slate-400 w-14">Stroke</label>
+                        <input
+                          type="color"
+                          value={ann.stroke}
+                          onChange={(e) => updateAnnotation(ann.id, { stroke: e.target.value })}
+                          className="w-8 h-6 rounded border border-slate-600 cursor-pointer bg-transparent"
+                        />
+                        <input
+                          type="range"
+                          min="1"
+                          max="12"
+                          value={ann.strokeWidth}
+                          onChange={(e) => updateAnnotation(ann.id, { strokeWidth: Number(e.target.value) })}
+                          className="flex-1 accent-brand-500"
+                        />
+                        <span className="text-xs text-slate-500 w-5">{ann.strokeWidth}</span>
+                      </div>
+                    )}
+
+                    {ann.type === 'highlight' && (
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-slate-400 w-14">Color</label>
+                        <input
+                          type="color"
+                          value={ann.stroke}
+                          onChange={(e) =>
+                            updateAnnotation(ann.id, {
+                              stroke: e.target.value,
+                              fill: e.target.value,
+                            })
+                          }
+                          className="w-8 h-6 rounded border border-slate-600 cursor-pointer bg-transparent"
+                        />
+                      </div>
+                    )}
+
+                    {ann.type === 'text' && (
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-slate-400 w-14">Paper</label>
+                        <input
+                          type="color"
+                          value={ann.fill === 'transparent' ? '#fef08a' : ann.fill}
+                          onChange={(e) => updateAnnotation(ann.id, { fill: e.target.value })}
+                          className="w-8 h-6 rounded border border-slate-600 cursor-pointer bg-transparent"
+                        />
+                      </div>
+                    )}
+
+                    {fillableTypes.includes(ann.type) && (
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-slate-400 w-14">Fill</label>
+                        <input
+                          type="color"
+                          value={ann.fill === 'transparent' ? '#000000' : ann.fill}
+                          onChange={(e) => updateAnnotation(ann.id, { fill: e.target.value })}
+                          className="w-8 h-6 rounded border border-slate-600 cursor-pointer bg-transparent"
+                        />
+                        <button
+                          onClick={() => updateAnnotation(ann.id, { fill: 'transparent' })}
+                          className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
+                            ann.fill === 'transparent'
+                              ? 'border-brand-500 text-brand-400 bg-brand-500/10'
+                              : 'border-slate-600 text-slate-500 hover:text-slate-300'
+                          }`}
+                        >
+                          None
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs text-slate-400 w-14">Opacity</label>
+                      <input
+                        type="range"
+                        min="0.05"
+                        max="1"
+                        step="0.05"
+                        value={ann.opacity}
+                        onChange={(e) => updateAnnotation(ann.id, { opacity: Number(e.target.value) })}
+                        className="flex-1 accent-brand-500"
+                      />
+                      <span className="text-xs text-slate-500 w-8">
+                        {Math.round(ann.opacity * 100)}%
+                      </span>
+                    </div>
+
+                    {dashableTypes.includes(ann.type) && (
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-slate-400 w-14">Line</label>
+                        <div className="flex gap-1">
+                          {(['solid', 'dashed', 'dotted'] as DashStyle[]).map((d) => (
+                            <button
+                              key={d}
+                              onClick={() => updateAnnotation(ann.id, { dash: d })}
+                              className={`px-2 py-0.5 text-[10px] rounded border transition-colors ${
+                                (ann.dash ?? 'solid') === d
+                                  ? 'border-brand-500 text-brand-400 bg-brand-500/10'
+                                  : 'border-slate-600 text-slate-500 hover:text-slate-300'
+                              }`}
+                            >
+                              {d === 'solid' ? '———' : d === 'dashed' ? '– – –' : '· · · ·'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {cornerRadiusTypes.includes(ann.type) && (
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-slate-400 w-14">Radius</label>
+                        <input
+                          type="range"
+                          min="0"
+                          max="50"
+                          value={(ann as { cornerRadius?: number }).cornerRadius ?? 0}
+                          onChange={(e) =>
+                            updateAnnotation(ann.id, {
+                              cornerRadius: Number(e.target.value),
+                            } as Partial<Annotation>)
+                          }
+                          className="flex-1 accent-brand-500"
+                        />
+                        <span className="text-xs text-slate-500 w-5">
+                          {(ann as { cornerRadius?: number }).cornerRadius ?? 0}
+                        </span>
+                      </div>
+                    )}
+
+                    {ann.type === 'text' && (
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-slate-400 w-14">Font</label>
+                        <input
+                          type="range"
+                          min="8"
+                          max="48"
+                          value={(ann as { fontSize: number }).fontSize}
+                          onChange={(e) =>
+                            updateAnnotation(ann.id, {
+                              fontSize: Number(e.target.value),
+                            } as Partial<Annotation>)
+                          }
+                          className="flex-1 accent-brand-500"
+                        />
+                        <span className="text-xs text-slate-500 w-5">
+                          {(ann as { fontSize: number }).fontSize}
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs text-slate-400 w-14">Rotate</label>
+                      <input
+                        type="range"
+                        min="0"
+                        max="360"
+                        value={Math.round(ann.rotation)}
+                        onChange={(e) => updateAnnotation(ann.id, { rotation: Number(e.target.value) })}
+                        className="flex-1 accent-brand-500"
+                      />
+                      <span className="text-xs text-slate-500 w-8">
+                        {Math.round(ann.rotation)}°
+                      </span>
+                    </div>
+                  </div>
+                )}
 
                 {/* Note/text editing */}
                 {ann.type === 'measure' ? (
@@ -515,7 +554,8 @@ export function RightSidebar() {
                 )}
               </div>
             );
-          })
+          })}
+          </>
         )}
       </div>
 

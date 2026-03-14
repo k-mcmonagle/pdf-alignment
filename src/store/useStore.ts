@@ -35,6 +35,7 @@ export interface AppState {
   // ─── Documents ────────────────────────────────────
   documents: PdfDocument[];
   addDocument: (doc: PdfDocument) => void;
+  updateDocument: (id: string, changes: Partial<PdfDocument>) => void;
   removeDocument: (id: string) => void;
   reorderDocuments: (fromIndex: number, toIndex: number) => void;
 
@@ -55,7 +56,8 @@ export interface AppState {
   annotations: Annotation[];
   addAnnotation: (a: Annotation) => void;
   updateAnnotation: (id: string, changes: Partial<Annotation>) => void;
-  removeAnnotation: (id: string) => void;  duplicateAnnotation: (id: string) => void;
+  removeAnnotation: (id: string) => void;
+  duplicateAnnotation: (id: string) => void;
   bringToFront: (id: string) => void;
   sendToBack: (id: string) => void;
   bringForward: (id: string) => void;
@@ -116,6 +118,13 @@ export const useStore = create<AppState>()(
     documents: [],
     addDocument: (doc) =>
       set((s) => ({ documents: [...s.documents, doc], isDirty: true })),
+    updateDocument: (id, changes) =>
+      set((s) => ({
+        documents: s.documents.map((doc) =>
+          doc.id === id ? { ...doc, ...changes } : doc,
+        ),
+        isDirty: true,
+      })),
     removeDocument: (id) =>
       set((s) => ({
         documents: s.documents.filter((d) => d.id !== id),
@@ -306,15 +315,20 @@ export const useStore = create<AppState>()(
         nodes: project.nodes,
         annotations: project.annotations,
         viewport: project.viewport || DEFAULT_VIEWPORT,
+        drawStyle: { ...DEFAULT_DRAW_STYLE, ...project.drawStyle },
+        measureCalibration: project.measureCalibration ?? null,
+        lastArrangeMode: project.lastArrangeMode ?? 'horizontal',
         isDirty: false,
         selectedNodeIds: [],
         selectedAnnotationIds: [],
+        activeTool: 'select',
+        pendingCalibrationPixels: null,
       }),
 
     getProject: (): WorkspaceProject => {
       const s = get();
       return {
-        version: 1,
+        version: 2,
         name: s.projectName,
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -323,6 +337,9 @@ export const useStore = create<AppState>()(
         nodes: s.nodes,
         annotations: s.annotations,
         viewport: s.viewport,
+        drawStyle: s.drawStyle,
+        measureCalibration: s.measureCalibration,
+        lastArrangeMode: s.lastArrangeMode,
       };
     },
 
@@ -333,11 +350,15 @@ export const useStore = create<AppState>()(
         annotations: [],
         viewport: { ...DEFAULT_VIEWPORT },
         settings: { ...DEFAULT_SETTINGS },
+        drawStyle: { ...DEFAULT_DRAW_STYLE },
         projectName: 'Untitled Workspace',
         selectedNodeIds: [],
         selectedAnnotationIds: [],
         isDirty: false,
         activeTool: 'select',
+        lastArrangeMode: 'horizontal',
+        measureCalibration: null,
+        pendingCalibrationPixels: null,
       }),
   })),
 );

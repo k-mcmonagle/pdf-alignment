@@ -6,10 +6,12 @@ import {
   cachePdfDoc,
   removeCachedPdfDoc,
   getRenderedPageKey,
+  removeRenderedPagesForDocument,
   setCachedRenderedPage,
 } from '../lib/pdf';
 import type { CanvasNode } from '../types';
 import { uid } from '../lib/utils';
+import { getViewportForNode } from '../lib/workspaceViewport';
 
 const MAX_FILE_SIZE_BYTES = 200 * 1024 * 1024; // 200 MB
 
@@ -19,6 +21,7 @@ export function usePdfLoader() {
   const removeDocument = useStore((s) => s.removeDocument);
   const removeNodesByDocument = useStore((s) => s.removeNodesByDocument);
   const setLoading = useStore((s) => s.setLoading);
+  const setViewport = useStore((s) => s.setViewport);
   const settings = useStore((s) => s.settings);
   const nodes = useStore((s) => s.nodes);
 
@@ -40,6 +43,8 @@ export function usePdfLoader() {
       try {
         // Calculate starting position based on existing nodes
         let startX = 60;
+        const shouldFocusFirstLoadedPage = nodes.length === 0;
+        let firstLoadedPageFocused = false;
         if (nodes.length > 0) {
           const maxRight = Math.max(...nodes.map((n) => n.x + n.width * n.scaleX));
           startX = maxRight + 60;
@@ -74,6 +79,19 @@ export function usePdfLoader() {
             };
             addNode(node);
 
+            if (shouldFocusFirstLoadedPage && !firstLoadedPageFocused) {
+              const stageEl = document.querySelector('.konvajs-content');
+              if (stageEl) {
+                setViewport(
+                  getViewportForNode(node, {
+                    width: stageEl.clientWidth,
+                    height: stageEl.clientHeight,
+                  }),
+                );
+                firstLoadedPageFocused = true;
+              }
+            }
+
             // Pre-render this page at the configured scale
             try {
               const canvas = await renderPdfPage(pdfDoc, pageInfo.pageNumber, scale);
@@ -99,7 +117,7 @@ export function usePdfLoader() {
         setLoading(false);
       }
     },
-    [addDocument, addNode, setLoading, settings.renderScale, nodes],
+    [addDocument, addNode, setLoading, setViewport, settings.renderScale, nodes],
   );
 
   const removeFile = useCallback(
@@ -107,6 +125,7 @@ export function usePdfLoader() {
       removeNodesByDocument(documentId);
       removeDocument(documentId);
       removeCachedPdfDoc(documentId);
+      removeRenderedPagesForDocument(documentId);
     },
     [removeDocument, removeNodesByDocument],
   );

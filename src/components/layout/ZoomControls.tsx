@@ -1,6 +1,7 @@
 import { Plus, Minus, Maximize2, RotateCcw } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { clamp } from '../../lib/utils';
+import { getCanvasContentBounds } from '../../lib/workspaceViewport';
 
 export function ZoomControls() {
   const viewport = useStore((s) => s.viewport);
@@ -57,24 +58,19 @@ export function ZoomControls() {
     const stageEl = document.querySelector('.konvajs-content');
     if (!stageEl) return;
 
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const node of nodes) {
-      minX = Math.min(minX, node.x);
-      minY = Math.min(minY, node.y);
-      maxX = Math.max(maxX, node.x + node.width * node.scaleX);
-      maxY = Math.max(maxY, node.y + node.height * node.scaleY);
-    }
+    const bounds = getCanvasContentBounds(nodes);
+    if (!bounds) return;
 
-    const contentW = maxX - minX;
-    const contentH = maxY - minY;
+    const contentW = bounds.width;
+    const contentH = bounds.height;
     const padding = 80;
 
     const scaleX = (stageEl.clientWidth - padding * 2) / contentW;
     const scaleY = (stageEl.clientHeight - padding * 2) / contentH;
     const zoom = clamp(Math.min(scaleX, scaleY), 0.02, 2);
 
-    const centerX = minX + contentW / 2;
-    const centerY = minY + contentH / 2;
+    const centerX = bounds.minX + contentW / 2;
+    const centerY = bounds.minY + contentH / 2;
 
     setViewport({
       zoom,
@@ -84,7 +80,7 @@ export function ZoomControls() {
   };
 
   return (
-    <div className="absolute bottom-4 right-4 z-20 flex items-center gap-1 bg-slate-800/90 backdrop-blur-sm border border-slate-700/50 rounded-lg p-1 shadow-lg">
+    <div className="absolute bottom-8 right-8 z-20 flex items-center gap-1 bg-slate-800/90 backdrop-blur-sm border border-slate-700/50 rounded-lg p-1 shadow-lg">
       <button onClick={zoomOut} className="btn-icon w-7 h-7" title="Zoom out" aria-label="Zoom out">
         <Minus size={14} />
       </button>
